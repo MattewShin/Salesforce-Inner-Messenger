@@ -18,6 +18,8 @@ import setMuted from '@salesforce/apex/ChatController.setMuted';
 import getParticipants from '@salesforce/apex/ChatController.getParticipants';
 import USER_ID from '@salesforce/user/Id';
 
+// Hello
+
 export default class UtilityChat extends NavigationMixin(LightningElement) {
     @api height;
     @api width;
