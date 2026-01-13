@@ -1,0 +1,33 @@
+<aura:component implements="flexipage:availableForAllPageTypes" access="global">
+    <!--
+        목적:
+        - Platform Event(Chat_Notification__e)를 구독
+        - 새 메시지 수신 시 UtilityChat 유틸리티 아이템을 lightning:utilityBarAPI로 하이라이트(플래시)
+
+        참고:
+        - UtilityChat(LWC)은 localStorage에 현재 보고 있는 sessionId(15자리)와 isChatView를 기록
+        - 여기서 해당 값을 읽어 "같은 방을 보고 있으면 플래시 안 함"을 구현
+    -->
+
+    <aura:attribute name="intervalId" type="Object" />
+    <aura:attribute name="isFlashing" type="Boolean" default="false" />
+    <aura:attribute name="flashSession15" type="String" />
+    <aura:attribute name="lastDebug" type="String" default="-" />
+
+    <!-- UtilityChat 유틸리티의 패널 헤더 라벨(Setup > App Manager > Utility Items에서 보이는 라벨) -->
+    <aura:attribute name="targetUtilityLabel" type="String" default="utilityChat" />
+
+    <!-- Platform Event 채널 -->
+    <aura:attribute name="channel" type="String" default="/event/Chat_Notification__e" />
+
+    <lightning:utilityBarAPI aura:id="utilitybar" />
+    <lightning:empApi aura:id="empApi" />
+
+    <aura:handler name="init" value="{!this}" action="{!c.doInit}" />
+
+    <!-- UI는 최소화: 백그라운드 실행이 목적 -->
+    <div class="slds-p-around_small slds-text-color_weak slds-text-body_small">
+        ChatFlashAura running... {!v.lastDebug}
+    </div>
+</aura:component>
+

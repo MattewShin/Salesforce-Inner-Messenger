@@ -1,0 +1,428 @@
+<template>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <template lwc:if={isChatView}>
+                <lightning-button-icon icon-name="utility:back" variant="bare" onclick={handleBack} alternative-text="Back"></lightning-button-icon>
+                <span class="slds-text-heading_small slds-truncate slds-m-horizontal_small" style="flex:1;" title={currentSessionName}>{currentSessionName}</span>
+                <lightning-button-menu
+                    class="chat-header-menu"
+                    alternative-text="채팅방 메뉴"
+                    menu-alignment="right"
+                    onselect={handleChatMenuSelect}
+                    icon-size="x-small">
+                    <lightning-menu-item value="participants" label="참여자 목록"></lightning-menu-item>
+                    <lightning-menu-item value="invite" label="참여자 초대"></lightning-menu-item>
+                    <lightning-menu-item value="rename" label="채팅방 이름 변경"></lightning-menu-item>
+                    <lightning-menu-item value="leave" label="채팅방 나가기"></lightning-menu-item>
+                    <template lwc:if={canDeleteCurrentSession}>
+                        <lightning-menu-item value="delete" label="채팅방 삭제"></lightning-menu-item>
+                    </template>
+                </lightning-button-menu>
+            </template>
+            <template lwc:else>
+                <span class="slds-text-heading_small">Chat</span>
+                <lightning-button-icon icon-name="utility:add" variant="border-filled" onclick={openNewChatModal} alternative-text="New Chat"></lightning-button-icon>
+            </template>
+        </div>
+
+        <!-- Session List View -->
+        <template lwc:if={isListView}>
+            <div class="session-list">
+                <template for:each={sessions} for:item="session">
+                    <div
+                        key={session.sessionId}
+                        class={session.cssClass}
+                        onclick={handleSessionSelect}
+                        data-id={session.sessionId}
+                        data-name={session.name}
+                        data-createdby={session.createdById}>
+                        <div class="session-main">
+                            <div class="slds-truncate session-name">
+                                <lightning-icon icon-name="standard:messaging_session" size="small" class="slds-m-right_x-small"></lightning-icon>
+                                {session.name}
+                            </div>
+                            <div class="slds-truncate session-preview" title={session.lastMessagePreview}>
+                                {session.lastMessagePreview}
+                            </div>
+                        </div>
+                        <div class="session-meta">
+                            <div class="slds-text-color_weak slds-text-body_small">
+                                <lightning-formatted-date-time value={session.lastMessageAt} hour="2-digit" minute="2-digit"></lightning-formatted-date-time>
+                            </div>
+                            <template lwc:if={session.unreadCount}>
+                                <span class="unread-badge">{session.unreadCount}</span>
+                            </template>
+                            <div class="session-actions">
+                                <lightning-button-icon
+                                    icon-name={session.pinIcon}
+                                    variant="bare"
+                                    alternative-text="고정"
+                                    title="고정"
+                                    data-id={session.sessionId}
+                                    data-pinned={session.isPinned}
+                                    onclick={togglePin}>
+                                </lightning-button-icon>
+                                <lightning-button-icon
+                                    icon-name={session.muteIcon}
+                                    variant="bare"
+                                    alternative-text="알림"
+                                    title="알림"
+                                    data-id={session.sessionId}
+                                    data-muted={session.isMuted}
+                                    onclick={toggleMute}>
+                                </lightning-button-icon>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+                <template lwc:if={isSessionsEmpty}>
+                    <div class="slds-p-around_medium slds-text-align_center slds-text-color_weak">
+                        참여 중인 채팅방이 없습니다.
+                    </div>
+                </template>
+            </div>
+        </template>
+
+        <!-- Chat View -->
+        <template lwc:if={isChatView}>
+            <div class={chatAreaClass}>
+                <div class="messages" lwc:ref="messageContainer" onscroll={handleMessagesScroll}>
+                    <template for:each={messages} for:item="msg">
+                        <!-- Message Wrapper for layout -->
+                        <div key={msg.id} class={msg.wrapperClass}>
+                            <template lwc:if={msg.isDivider}>
+                                <div class="date-divider">
+                                    <span class="date-divider-text">{msg.dividerLabel}</span>
+                                </div>
+                            </template>
+                            <template lwc:else>
+                                <template lwc:if={msg.isSystem}>
+                                    <div class="system-message">
+                                        <span class="system-line1">{msg.systemLine1}</span>
+                                        <span class="system-line2">{msg.systemLine2}</span>
+                                    </div>
+                                </template>
+                                <template lwc:else>
+                                    <!-- Message Actions (Above bubble) -->
+                                    <template lwc:if={msg.showActions}>
+                                        <div class={msg.actionsRowClass}>
+                                            <lightning-button-menu
+                                                icon-name="utility:threedots_vertical"
+                                                variant="bare"
+                                                icon-size="x-small"
+                                                alternative-text="메시지 메뉴"
+                                                menu-alignment={msg.actionsMenuAlignment}
+                                                data-id={msg.id}
+                                                onselect={handleMessageMenuSelect}>
+                                                <lightning-menu-item value="copy" label="복사"></lightning-menu-item>
+                                                <lightning-menu-item value="reply" label="답장"></lightning-menu-item>
+                                            </lightning-button-menu>
+                                        </div>
+                                    </template>
+
+                                    <!-- Sender Name -->
+                                    <template lwc:if={msg.showSender}>
+                                        <span class="sender-name">{msg.senderName}</span>
+                                    </template>
+
+                                    <div class="bubble-row">
+                                        <template lwc:if={msg.isMine}>
+                                            <!-- Time (Left for Mine) -->
+                                            <span class="message-meta-left">
+                                                <template lwc:if={msg.showUnreadCount}>
+                                                    <span class="read-count">{msg.unreadByOthers}</span>
+                                                </template>
+                                                <span class="message-time left">
+                                                    <lightning-formatted-date-time value={msg.createdDate} hour="2-digit" minute="2-digit"></lightning-formatted-date-time>
+                                                </span>
+                                            </span>
+
+                                            <!-- Bubble -->
+                                            <div class={msg.bubbleClass}>
+                                                <template lwc:if={msg.hasReply}>
+                                                    <div class="reply-quote">
+                                                        <div class="reply-quote-sender">{msg.replyToSenderName}</div>
+                                                        <div class="reply-quote-preview">{msg.replyToPreview}</div>
+                                                    </div>
+                                                </template>
+                                                <span>{msg.displayContent}</span>
+                                                <!-- Attachment -->
+                                                <template lwc:if={msg.attachment}>
+                                                    <template lwc:if={msg.attachment.isImage}>
+                                                        <button
+                                                            class="attachment-image"
+                                                            onclick={handlePreviewFile}
+                                                            data-id={msg.attachment.docId}
+                                                            type="button">
+                                                            <img class="attachment-thumb" src={msg.attachment.thumbUrl} alt={msg.attachment.title} />
+                                                        </button>
+                                                    </template>
+                                                    <template lwc:else>
+                                                        <button
+                                                            class="attachment-file"
+                                                            onclick={handlePreviewFile}
+                                                            data-id={msg.attachment.docId}
+                                                            type="button">
+                                                            <lightning-icon icon-name="doctype:attachment" size="xx-small"></lightning-icon>
+                                                            <span class="attachment-file-title slds-truncate">{msg.attachment.title}</span>
+                                                            <span class="attachment-file-ext">{msg.attachment.extension}</span>
+                                                        </button>
+                                                    </template>
+                                                </template>
+                                            </div>
+                                        </template>
+
+                                        <template lwc:else>
+                                            <!-- Bubble -->
+                                            <div class={msg.bubbleClass}>
+                                                <template lwc:if={msg.hasReply}>
+                                                    <div class="reply-quote">
+                                                        <div class="reply-quote-sender">{msg.replyToSenderName}</div>
+                                                        <div class="reply-quote-preview">{msg.replyToPreview}</div>
+                                                    </div>
+                                                </template>
+                                                <span>{msg.displayContent}</span>
+                                                <!-- Attachment -->
+                                                <template lwc:if={msg.attachment}>
+                                                    <template lwc:if={msg.attachment.isImage}>
+                                                        <button
+                                                            class="attachment-image"
+                                                            onclick={handlePreviewFile}
+                                                            data-id={msg.attachment.docId}
+                                                            type="button">
+                                                            <img class="attachment-thumb" src={msg.attachment.thumbUrl} alt={msg.attachment.title} />
+                                                        </button>
+                                                    </template>
+                                                    <template lwc:else>
+                                                        <button
+                                                            class="attachment-file"
+                                                            onclick={handlePreviewFile}
+                                                            data-id={msg.attachment.docId}
+                                                            type="button">
+                                                            <lightning-icon icon-name="doctype:attachment" size="xx-small"></lightning-icon>
+                                                            <span class="attachment-file-title slds-truncate">{msg.attachment.title}</span>
+                                                            <span class="attachment-file-ext">{msg.attachment.extension}</span>
+                                                        </button>
+                                                    </template>
+                                                </template>
+                                            </div>
+
+                                            <!-- Time (Right for Others) -->
+                                            <template lwc:if={msg.showTimeRight}>
+                                                <span class="message-meta-right">
+                                                    <template lwc:if={msg.showUnreadCount}>
+                                                        <span class="read-count">{msg.unreadByOthers}</span>
+                                                    </template>
+                                                    <span class="message-time right">
+                                                        <lightning-formatted-date-time value={msg.createdDate} hour="2-digit" minute="2-digit"></lightning-formatted-date-time>
+                                                    </span>
+                                                </span>
+                                            </template>
+                                        </template>
+                                    </div>
+                                </template>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+                
+                <div class="input-area">
+                    <template lwc:if={isReplying}>
+                        <div class="reply-draft">
+                            <div class="reply-draft-left">
+                                <div class="reply-draft-title">답장</div>
+                                <div class="reply-draft-text">{replyDraftLabel}</div>
+                            </div>
+                            <lightning-button-icon
+                                icon-name="utility:close"
+                                variant="bare"
+                                alternative-text="답장 취소"
+                                title="취소"
+                                onclick={clearReplyDraft}>
+                            </lightning-button-icon>
+                        </div>
+                    </template>
+
+                    <div class="input-row">
+                    <div class="file-upload-wrapper" title="파일 첨부">
+                        <lightning-icon icon-name="utility:attach" size="x-small" class="visible-icon"></lightning-icon>
+                        <lightning-file-upload
+                            name="fileUploader"
+                            accept=".png, .jpg, .jpeg, .gif, .webp, .bmp, .pdf"
+                            record-id={currentSessionId}
+                            onuploadfinished={handleUploadFinished}
+                            variant="label-hidden"
+                            class="hidden-upload">
+                        </lightning-file-upload>
+                    </div>
+
+                    <lightning-input 
+                        class="input-box" 
+                        variant="label-hidden" 
+                        placeholder="메시지 입력..." 
+                        value={messageInput}
+                        lwc:ref="chatInput"
+                        oninput={handleInputChange}
+                        onkeydown={handleInputKeyDown}
+                        oncommit={handleSendMessage}
+                        disabled={isLoading}
+                        autocomplete="off">
+                    </lightning-input>
+                    <lightning-button-icon icon-name="utility:send" variant="brand" onclick={handleSendMessage} disabled={isLoading}></lightning-button-icon>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- People Modal (공용): 새 채팅방 만들기 / 참여자 초대 -->
+        <template lwc:if={isPeopleModalOpen}>
+            <div class="modal-overlay">
+                <div class="modal-content">
+                    <div class="modal-header people-modal-header">
+                        <div class="people-modal-header-left">
+                            <template lwc:if={isPeopleStep2}>
+                                <lightning-button-icon icon-name="utility:back" variant="bare" onclick={peoplePrevStep} alternative-text="Back"></lightning-button-icon>
+                            </template>
+                            <h2 class="slds-text-heading_medium">{peopleModalTitle}</h2>
+                        </div>
+                        <div class="people-modal-header-right">
+                            <span class="people-step-indicator">{peopleStepLabel}</span>
+                        </div>
+                    </div>
+
+                    <div class="modal-body">
+                        <!-- Step 1: 검색 + 빠른 선택 -->
+                        <template lwc:if={isPeopleStep1}>
+                            <div class="slds-form-element">
+                                <label class="slds-form-element__label">사용자 검색</label>
+                                <div class="slds-form-element__control">
+                                    <lightning-input type="search" variant="label-hidden" onchange={handlePeopleUserSearch} placeholder="이름 검색..."></lightning-input>
+                                </div>
+                            </div>
+
+                            <template lwc:if={peopleSearchResults.length}>
+                                <ul class="people-results">
+                                    <template for:each={peopleSearchResults} for:item="user">
+                                        <li key={user.Id} class={user._rowClass} onclick={handlePeopleToggleUser} data-id={user.Id} data-name={user.Name}>
+                                            <span class="slds-truncate">{user.Name}</span>
+                                            <template lwc:if={user._selected}>
+                                                <lightning-icon icon-name="utility:check" size="x-small"></lightning-icon>
+                                            </template>
+                                        </li>
+                                    </template>
+                                </ul>
+                            </template>
+
+                            <div class="people-summary">
+                                <div class="people-summary-left">
+                                    <span class="people-summary-title">선택됨</span>
+                                    <span class="people-summary-count">({peopleSelectedUsers.length}명)</span>
+                                </div>
+                                <lightning-button label="다음" variant="neutral" onclick={peopleNextStep} disabled={isPeopleNextDisabled}></lightning-button>
+                            </div>
+                        </template>
+
+                        <!-- Step 2: 선택 관리 + 최종 확인 -->
+                        <template lwc:if={isPeopleStep2}>
+                            <template lwc:if={isPeopleCreateMode}>
+                                <lightning-input label="채팅방 이름(선택)" value={peopleChatName} onchange={handlePeopleChatNameChange}></lightning-input>
+                            </template>
+
+                            <div class="selected-users">
+                                <div class="selected-users-header">
+                                    선택된 사용자 <span class="selected-users-count">({peopleSelectedUsers.length}명)</span>
+                                </div>
+                                <div class="selected-users-body">
+                                    <template lwc:if={peopleSelectedUsers.length}>
+                                        <div class="pill-container">
+                                            <template for:each={peopleSelectedUsers} for:item="user">
+                                                <lightning-pill key={user.id} label={user.name} onremove={handlePeopleRemoveUser} data-id={user.id}></lightning-pill>
+                                            </template>
+                                        </div>
+                                    </template>
+                                    <template lwc:else>
+                                        <div class="selected-users-empty">사용자를 선택하세요.</div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    <div class="modal-footer slds-grid slds-grid_align-end">
+                        <lightning-button label="닫기" onclick={closePeopleModal} class="slds-m-right_small"></lightning-button>
+                        <template lwc:if={isPeopleStep2}>
+                            <lightning-button label={peoplePrimaryLabel} variant="brand" onclick={confirmPeopleAction} disabled={isPeopleConfirmDisabled}></lightning-button>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- Rename Chat Name Modal -->
+        <template lwc:if={isRenameModalOpen}>
+            <div class="modal-overlay">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2 class="slds-text-heading_medium">채팅방 이름 변경</h2>
+                    </div>
+                    <div class="modal-body">
+                        <lightning-input label="채팅방 이름" value={renameChatName} onchange={handleRenameNameChange}></lightning-input>
+                    </div>
+                    <div class="modal-footer slds-grid slds-grid_align-end">
+                        <lightning-button label="취소" onclick={closeRenameModal} class="slds-m-right_small"></lightning-button>
+                        <lightning-button label="변경" variant="brand" onclick={confirmRename} disabled={isLoading}></lightning-button>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+
+        <!-- Participants Modal -->
+        <template lwc:if={isParticipantsModalOpen}>
+            <div class="modal-overlay">
+                <div class="modal-content participants-modal">
+                    <div class="modal-header participants-modal-header">
+                        <div class="participants-modal-title">
+                            <h2 class="slds-text-heading_medium">참여자 목록</h2>
+                            <span class="participants-count">({participantCountLabel})</span>
+                        </div>
+                    </div>
+                    <div class="modal-body participants-modal-body">
+                        <template lwc:if={isParticipantsLoading}>
+                            <div class="slds-p-around_medium slds-align_absolute-center">
+                                <lightning-spinner size="small"></lightning-spinner>
+                            </div>
+                        </template>
+                        <template lwc:else>
+                            <template lwc:if={participants.length}>
+                                <ul class="participants-list">
+                                    <template for:each={participants} for:item="p">
+                                        <li key={p.participantId} class={p.rowClass}>
+                                            <div class="participants-left">
+                                                <div class="participants-name">
+                                                    {p.userName}
+                                                    <template lwc:if={p.isMe}>
+                                                        <span class="participants-me">(나)</span>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </li>
+                                    </template>
+                                </ul>
+                            </template>
+                            <template lwc:else>
+                                <div class="slds-p-around_medium slds-text-align_center slds-text-color_weak">
+                                    참여자를 찾을 수 없습니다.
+                                </div>
+                            </template>
+                        </template>
+                    </div>
+                    <div class="modal-footer slds-grid slds-grid_align-end">
+                        <lightning-button label="닫기" onclick={closeParticipantsModal}></lightning-button>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</template>

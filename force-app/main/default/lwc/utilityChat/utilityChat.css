@@ -1,0 +1,745 @@
+/* 전체 컨테이너: Utility Bar의 높이를 꽉 채움 */
+.container {
+    height: 100%;
+    width: 100%;
+    position: relative; /* 자식 absolute 배치를 위해 */
+    background-color: white;
+    overflow: hidden;
+}
+
+/* 헤더: 항상 상단에 고정 */
+.header {
+    height: 50px;
+    padding: 0 10px;
+    background-color: #f3f3f3;
+    border-bottom: 1px solid #d8dde6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+}
+
+.chat-header-menu {
+    flex-shrink: 0;
+}
+
+/* 수신 알림 플래시(해당 대화방/세션 아이템 깜빡임) */
+.session-item.flashing {
+    animation: chatFlash 1s infinite;
+}
+
+@keyframes chatFlash {
+    0% { background-color: #f3f3f3; }
+    50% { background-color: #ffe58f; }
+    100% { background-color: #f3f3f3; }
+}
+
+/* 채팅방 목록 영역 */
+.session-list {
+    position: absolute;
+    top: 50px; /* 헤더 높이만큼 아래로 */
+    bottom: 0;
+    left: 0;
+    right: 0;
+    overflow-y: auto;
+}
+
+.session-item {
+    padding: 12px;
+    border-bottom: 1px solid #eeeeee;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.session-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.session-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.session-preview {
+    color: #6b6d70;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.session-meta {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex: 0 0 auto;
+}
+
+.session-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.unread-badge {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: #d83b01;
+    color: #fff;
+    font-size: 0.7rem;
+    line-height: 18px;
+    text-align: center;
+    margin-left: 6px;
+    flex: 0 0 auto;
+}
+
+.session-item:hover {
+    background-color: #f4f6f9;
+}
+
+/* 채팅 영역 (메시지 + 입력창 포함) */
+.chat-area {
+    position: absolute;
+    top: 50px; /* 헤더 높이 */
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    --input-area-height: 60px;
+}
+
+.chat-area.replying {
+    --input-area-height: 96px;
+}
+
+/* 메시지 목록: 스크롤 영역 */
+.messages {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: var(--input-area-height, 60px); /* 입력창 높이만큼 공간 확보 (중요) */
+    overflow-y: auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px; /* 간격 늘림 */
+    background-color: #fff;
+}
+
+/* 메시지 래퍼: 전체 정렬 제어 */
+.msg-wrapper {
+    display: flex;
+    flex-direction: column;
+    max-width: 85%;
+}
+
+.msg-wrapper.mine {
+    align-self: flex-end;
+    align-items: flex-end;
+}
+
+.msg-wrapper.others {
+    align-self: flex-start;
+    align-items: flex-start;
+}
+
+.msg-wrapper.system {
+    align-self: center;
+    align-items: center;
+    width: 100%;
+    max-width: 100%;
+}
+
+.msg-wrapper.divider {
+    align-self: center;
+    align-items: center;
+    width: 100%;
+    max-width: 100%;
+}
+
+.date-divider {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: #7a7a7a;
+    font-size: 0.75rem;
+    margin: 10px 0;
+    user-select: none;
+}
+
+.date-divider::before,
+.date-divider::after {
+    content: '';
+    flex: 1 1 auto;
+    height: 1px;
+    background: #d8d8d8;
+}
+
+.date-divider-text {
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: #f7f7f7;
+    white-space: nowrap;
+}
+
+.system-message {
+    color: #6b6b6b;
+    font-size: 0.75rem;
+    background: #f3f3f3;
+    border-radius: 999px;
+    /* 도형을 넉넉하게(가로로 길게) */
+    padding: 10px 16px;
+    text-align: center;
+    /* 시스템 문구는 무조건 2줄(각 1줄)로 고정되도록 폭을 최대한 넓게 사용 */
+    width: 100%;
+    max-width: 100%;
+    line-height: 1.15rem;
+    /* 두 줄 중 더 긴 줄을 기준으로 폭을 잡아(짧은 1줄 기준으로) 2번째 줄이 잘리는 현상 방지 */
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    box-sizing: border-box;
+}
+
+.system-line1,
+.system-line2 {
+    display: block;
+    width: 100%;
+    text-align: center;
+    max-width: 100%;
+}
+
+.system-line1 {
+    /* 1줄은 짧게(A님이)만 오도록 구성하므로 잘림 처리 제거 */
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+.system-line2 {
+    /* 2줄도 1줄만(추가 줄바꿈 금지) */
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+.system-line2 {
+    margin-top: 2px;
+}
+
+/* 말풍선과 시간 배치용 가로 컨테이너 */
+.bubble-row {
+    display: flex;
+    align-items: flex-end; /* 하단 정렬 (시간 표시용) */
+    gap: 6px;
+}
+
+.message-meta-left {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+}
+
+.message-meta-right {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+}
+
+.read-count {
+    font-size: 0.72rem;
+    line-height: 0.8rem;
+    color: #d83b01;
+    white-space: nowrap;
+}
+
+/* 말풍선 스타일 */
+.message-bubble {
+    padding: 8px 12px;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    position: relative;
+    /* 공백 없는 긴 문자열(숫자/영문 반복 등)도 줄바꿈 강제 */
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+.message-bubble span {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.message-bubble.mine {
+    background-color: #005fb2;
+    color: white;
+    border-bottom-right-radius: 2px;
+}
+
+.message-bubble.others {
+    background-color: #f3f3f3;
+    color: black;
+    border-bottom-left-radius: 2px;
+}
+
+/* 이름 스타일 */
+.sender-name {
+    font-size: 0.75rem;
+    color: #696969;
+    margin-bottom: 4px;
+    margin-left: 4px;
+}
+
+/* 내 메시지는 우측 정렬이라 이름도 우측 정렬 */
+.msg-wrapper.mine .sender-name {
+    margin-left: 0;
+    margin-right: 4px;
+    text-align: right;
+    align-self: flex-end;
+}
+
+/* 시간 스타일 */
+.message-time {
+    font-size: 0.65rem;
+    color: #999;
+    white-space: nowrap;
+    margin-bottom: 2px; /* 말풍선 하단과 높이 맞춤 */
+}
+
+.message-time.left {
+    text-align: right;
+}
+
+.message-time.right {
+    text-align: left;
+}
+
+.attachment-preview {
+    margin-top: 5px;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 4px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+}
+
+/* 첨부 이미지(인라인) */
+.attachment-image {
+    margin-top: 8px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 12px;
+    overflow: hidden;
+    max-width: 220px;
+}
+
+.attachment-thumb {
+    display: block;
+    width: 220px;
+    max-width: 100%;
+    height: auto;
+    border-radius: 12px;
+}
+
+/* 첨부 파일 카드 */
+.attachment-file {
+    margin-top: 8px;
+    width: 100%;
+    max-width: 260px;
+    display: grid;
+    grid-template-columns: 16px 1fr auto;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: rgba(255, 255, 255, 0.85);
+    cursor: pointer;
+    text-align: left;
+}
+
+.message-bubble.mine .attachment-file {
+    background: rgba(255, 255, 255, 0.9);
+}
+
+.attachment-file-title {
+    min-width: 0;
+    font-size: 0.8rem;
+    color: #1f1f1f;
+}
+
+.attachment-file-ext {
+    font-size: 0.7rem;
+    color: #6b6d70;
+    text-transform: uppercase;
+}
+
+/* 첨부 프리뷰는 Salesforce 표준 filePreview를 사용(커스텀 모달 제거) */
+
+/* 입력창 영역: 하단 고정 */
+.input-area {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: var(--input-area-height, 60px);
+    padding: 8px 10px;
+    border-top: 1px solid #d8dde6;
+    background-color: #f9f9f9;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    z-index: 20;
+}
+
+.input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.reply-draft {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: #ffffff;
+    border: 1px solid #e5e5e5;
+}
+
+.reply-draft-left {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.reply-draft-title {
+    font-size: 0.75rem;
+    color: #6b6d70;
+    line-height: 1rem;
+}
+
+.reply-draft-text {
+    font-size: 0.85rem;
+    color: #1f1f1f;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.message-actions-row {
+    display: inline-flex;
+    margin-bottom: 2px;
+}
+
+.message-actions-row.mine {
+    align-self: flex-end;
+}
+
+.message-actions-row.others {
+    align-self: flex-start;
+}
+
+.reply-quote {
+    margin-bottom: 6px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border-left: 3px solid rgba(216, 59, 1, 0.8);
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.msg-wrapper.others .reply-quote {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.reply-quote-sender {
+    font-size: 0.75rem;
+    font-weight: 600;
+    opacity: 0.9;
+    margin-bottom: 2px;
+}
+
+.reply-quote-preview {
+    font-size: 0.8rem;
+    opacity: 0.9;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.file-upload-wrapper {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    overflow: hidden;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.file-upload-wrapper:hover {
+    background-color: #e5e5e5;
+}
+
+.visible-icon {
+    pointer-events: none;
+}
+
+.hidden-upload {
+    position: absolute;
+    top: -15px; left: -15px;
+    width: 200%;
+    height: 200%;
+    opacity: 0;
+    z-index: 10;
+    cursor: pointer;
+}
+
+.input-box {
+    flex: 1;
+}
+
+/* Modal styles */
+.modal-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+}
+
+.modal-content {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    width: 90%;
+    max-height: 80%;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    /* overflow:hidden 이면 lightning-input 포커스 링/좌측이 잘려 보일 수 있음 */
+    overflow: visible;
+    min-height: 0;
+}
+
+.modal-header {
+    flex: 0 0 auto;
+}
+
+.modal-body {
+    flex: 1 1 auto;
+    min-height: 0; /* flex item overflow 활성화 */
+    overflow-y: auto;
+    overflow-x: visible;
+    padding-right: 8px; /* 스크롤바 + 포커스 링 여백 */
+    padding-left: 4px;  /* 좌측 포커스 링 잘림 방지 */
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.modal-footer {
+    flex: 0 0 auto;
+    padding-top: 10px;
+    border-top: 1px solid #e5e5e5;
+    background: #fff;
+}
+
+/* 참여자 목록 모달 */
+.participants-modal {
+    max-width: 520px;
+}
+
+.participants-modal-title {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.participants-count {
+    color: #6b6d70;
+    font-size: 12px;
+}
+
+.participants-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.participants-item {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 8px;
+    border-bottom: 1px solid #f3f3f3;
+}
+
+.participants-item.me {
+    background: #f8faff;
+}
+
+.participants-name {
+    font-weight: 600;
+    color: #1f1f1f;
+}
+
+.participants-me {
+    margin-left: 6px;
+    font-weight: 400;
+    font-size: 12px;
+    color: #6b6d70;
+}
+
+.people-results {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    max-height: 260px;  /* 1단계 검색 결과는 내부에서 스크롤 */
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.people-result {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+}
+
+.people-result:last-child {
+    border-bottom: none;
+}
+
+.people-result.selected {
+    background: #eef4ff;
+}
+
+.people-summary {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    background: #fff;
+    border-top: 1px solid #e5e5e5;
+    padding-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.people-summary-left {
+    flex: 1 1 auto;
+    font-size: 0.8rem;
+    color: #444;
+    white-space: nowrap;
+}
+
+.people-step-indicator {
+    font-size: 0.75rem;
+    color: #666;
+}
+
+.people-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.people-modal-header-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.selected-users {
+    max-height: 220px; /* 선택 유저가 많아도 충분히 표시 */
+    min-height: 92px;  /* 최소 2줄 이상 보이게 */
+    overflow-y: auto;  /* 박스 자체에서 스크롤(모바일에서도 스크롤이 더 잘 됨) */
+    overflow-x: hidden;
+    padding: 10px;
+    border: 1px solid #d8dde6;
+    border-radius: 8px;
+    background: #fafafa;
+}
+
+/* 선택된 사용자 영역은 스크롤 중에도 하단에 고정해서(초대/생성 시) 상태가 항상 보이게 */
+.modal-body .selected-users {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+}
+
+.selected-users-header {
+    font-size: 0.8rem;
+    color: #444;
+    margin-bottom: 8px;
+}
+
+.selected-users-count {
+    color: #666;
+    font-weight: 600;
+}
+
+.selected-users-body {
+    max-height: none;
+    overflow: visible;
+}
+
+.pill-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.selected-users-empty {
+    color: #888;
+    font-size: 0.8rem;
+    padding: 6px 2px;
+}
