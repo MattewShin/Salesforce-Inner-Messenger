@@ -3,4 +3,3 @@
     <apiVersion>65.0</apiVersion>
     <description>Background chat notifier that flashes UtilityChat utility item via lightning:utilityBarAPI.</description>
 </AuraDefinitionBundle>
-

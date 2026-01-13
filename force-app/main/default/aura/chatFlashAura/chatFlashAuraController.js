@@ -3,4 +3,3 @@
         helper.subscribe(component);
     }
 })
-

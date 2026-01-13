@@ -1,36 +1,34 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Package xmlns="http://soap.sforce.com/2006/04/metadata">
+    <!--
+      Chat 기능은 Apex/LWC/Aura 외에도 CustomObject(세션/메시지/참여자/Platform Event)와
+      PermissionSet(FLS/CRUD)이 반드시 필요합니다.
+    -->
     <types>
-        <members>*</members>
+        <members>ChatController</members>
+        <members>ChatController_Test</members>
         <name>ApexClass</name>
     </types>
     <types>
-        <members>*</members>
-        <name>ApexComponent</name>
-    </types>
-    <types>
-        <members>*</members>
-        <name>ApexPage</name>
-    </types>
-    <types>
-        <members>*</members>
-        <name>ApexTestSuite</name>
-    </types>
-    <types>
-        <members>*</members>
-        <name>ApexTrigger</name>
-    </types>
-    <types>
-        <members>*</members>
+        <members>chatFlashAura</members>
         <name>AuraDefinitionBundle</name>
     </types>
     <types>
-        <members>*</members>
+        <members>utilityChat</members>
         <name>LightningComponentBundle</name>
     </types>
+    <!-- Chat 데이터 모델(Platform Event 포함: Chat_Notification__e) -->
     <types>
-        <members>*</members>
-        <name>StaticResource</name>
+        <members>Chat_Session__c</members>
+        <members>Chat_Message__c</members>
+        <members>Chat_Participant__c</members>
+        <members>Chat_Notification__e</members>
+        <name>CustomObject</name>
+    </types>
+    <!-- 권한(클래스 접근 + 오브젝트/필드 권한) -->
+    <types>
+        <members>Internal_Chat_Permission_Set</members>
+        <name>PermissionSet</name>
     </types>
     <version>65.0</version>
 </Package>
