@@ -1,3 +1,14 @@
+/**
+ * ===========================================================================================
+ * @description       : Test class for ChatController
+ * @author            : CNXK
+ * @last modified on  : 2025-01-XX
+ * @last modified by  : CNXK
+ * ===========================================================================================
+ * Modification Log
+ * Ver   Date         Author              Description
+ * 1.0   2025-01-XX   CNXK                Initial version - Test coverage for ChatController methods (sessions, messages, participants)
+ */
 @IsTest
 private class ChatController_Test {
     @testSetup
@@ -52,27 +63,27 @@ private class ChatController_Test {
         return [SELECT Id, Name FROM User WHERE LastName = 'ChatTest_u3' LIMIT 1];
     }
 
-    private static Chat_Session__c makeSession(User creator, String name, String typeVal) {
-        Chat_Session__c s;
+    private static Inner_Chat_Session__c makeSession(User creator, String name, String typeVal) {
+        Inner_Chat_Session__c s;
         System.runAs(creator) {
-            s = new Chat_Session__c(Name = name, Type__c = typeVal);
+            s = new Inner_Chat_Session__c(Name = name, Type__c = typeVal);
             insert s;
         }
         return s;
     }
 
     private static void addParticipants(Id sessionId, List<User> users) {
-        List<Chat_Participant__c> parts = new List<Chat_Participant__c>();
+        List<Inner_Chat_Participant__c> parts = new List<Inner_Chat_Participant__c>();
         for (User u : users) {
-            parts.add(new Chat_Participant__c(Chat_Session__c = sessionId, User__c = u.Id));
+            parts.add(new Inner_Chat_Participant__c(Inner_Chat_Session__c = sessionId, User__c = u.Id));
         }
         insert parts;
     }
 
-    private static Chat_Message__c addMessage(Id sessionId, User sender, String content) {
-        Chat_Message__c m;
+    private static Inner_Chat_Message__c addMessage(Id sessionId, User sender, String content) {
+        Inner_Chat_Message__c m;
         System.runAs(sender) {
-            m = new Chat_Message__c(Chat_Session__c = sessionId, Sender__c = sender.Id, Content__c = content);
+            m = new Inner_Chat_Message__c(Inner_Chat_Session__c = sessionId, Sender__c = sender.Id, Content__c = content);
             insert m;
         }
         return m;
@@ -83,12 +94,12 @@ private class ChatController_Test {
         User a = u1();
         User b = u2();
 
-        Chat_Session__c s = makeSession(a, 'U1-U2 Direct', 'Direct');
+        Inner_Chat_Session__c s = makeSession(a, 'U1-U2 Direct', 'Direct');
         addParticipants(s.Id, new List<User>{ a, b });
 
-        Chat_Message__c mMine = addMessage(s.Id, a, 'hi from u1');
-        Chat_Message__c mSystem = addMessage(s.Id, a, '[SYSTEM] u1님이 채팅방을 나갔습니다.');
-        Chat_Message__c mOther = addMessage(s.Id, b, 'hello from u2');
+        Inner_Chat_Message__c mMine = addMessage(s.Id, a, 'hi from u1');
+        Inner_Chat_Message__c mSystem = addMessage(s.Id, a, '[SYSTEM] u1 left the chat.');
+        Inner_Chat_Message__c mOther = addMessage(s.Id, b, 'hello from u2');
 
         Test.setCreatedDate(mMine.Id, DateTime.now().addMinutes(-30));
         Test.setCreatedDate(mSystem.Id, DateTime.now().addMinutes(-20));
@@ -99,9 +110,9 @@ private class ChatController_Test {
             List<ChatController.ChatSessionWrapper> sessions = ChatController.getChatSessions();
             Test.stopTest();
 
-            System.assertEquals(1, sessions.size(), '참여중인 세션 1개');
+            System.assertEquals(1, sessions.size(), 'One active chat session');
             System.assertEquals(s.Id, sessions[0].sessionId);
-            System.assertEquals('hello from u2', sessions[0].lastMessagePreview, '시스템 메시지 제외 프리뷰');
+            System.assertEquals('hello from u2', sessions[0].lastMessagePreview, 'Last message preview excludes system messages');
         }
     }
 
@@ -110,10 +121,10 @@ private class ChatController_Test {
         User a = u1();
         User b = u2();
 
-        Chat_Session__c s = makeSession(a, 'Msg Test', 'Direct');
+        Inner_Chat_Session__c s = makeSession(a, 'Msg Test', 'Direct');
         addParticipants(s.Id, new List<User>{ a, b });
 
-        Chat_Message__c base = addMessage(s.Id, b, 'base message for reply');
+        Inner_Chat_Message__c base = addMessage(s.Id, b, 'base message for reply');
         Test.setCreatedDate(base.Id, DateTime.now().addMinutes(-5));
 
         System.runAs(a) {
@@ -123,8 +134,8 @@ private class ChatController_Test {
             List<ChatController.MessageWrapper> paged = ChatController.getMessagesPaged(s.Id, null, 10);
             Test.stopTest();
 
-            System.assert(msgs.size() > 0, '메시지 존재');
-            System.assert(paged.size() > 0, '페이징 메시지 존재');
+            System.assert(msgs.size() > 0, 'Messages exist');
+            System.assert(paged.size() > 0, 'Paged messages exist');
         }
     }
 
@@ -134,7 +145,7 @@ private class ChatController_Test {
         User b = u2();
         User c = u3();
 
-        Chat_Session__c s = makeSession(a, 'Flow Test', 'Direct');
+        Inner_Chat_Session__c s = makeSession(a, 'Flow Test', 'Direct');
         addParticipants(s.Id, new List<User>{ a, b });
         addMessage(s.Id, b, 'hello');
 
@@ -146,12 +157,12 @@ private class ChatController_Test {
             List<ChatController.ChatParticipantWrapper> parts = ChatController.getParticipants(s.Id);
             Test.stopTest();
 
-            System.assert(parts.size() >= 2, '참여자 목록 조회');
+            System.assert(parts.size() >= 2, 'Retrieve participant list');
         }
 
-        Chat_Session__c after = [SELECT Name, Type__c FROM Chat_Session__c WHERE Id = :s.Id LIMIT 1];
-        System.assertEquals('Renamed Chat', after.Name, '이름 변경 반영');
-        System.assertEquals('Group', after.Type__c, '3명 이상이면 Group 전환');
+        Inner_Chat_Session__c after = [SELECT Name, Type__c FROM Inner_Chat_Session__c WHERE Id = :s.Id LIMIT 1];
+        System.assertEquals('Renamed Chat', after.Name, 'Rename reflected');
+        System.assertEquals('Group', after.Type__c, 'Type changes to Group with 3+ participants');
     }
 
     @IsTest
@@ -159,7 +170,7 @@ private class ChatController_Test {
         User a = u1();
         User b = u2();
 
-        Chat_Session__c s = makeSession(a, 'PinBase', 'Direct');
+        Inner_Chat_Session__c s = makeSession(a, 'PinBase', 'Direct');
         addParticipants(s.Id, new List<User>{ a, b });
 
         System.runAs(b) {
@@ -175,11 +186,11 @@ private class ChatController_Test {
         User a = u1();
         User b = u2();
 
-        // b 기준으로 3개 고정 후 4번째 고정 시 예외
-        Chat_Session__c s1 = makeSession(a, 'Pin1', 'Group');
-        Chat_Session__c s2 = makeSession(a, 'Pin2', 'Group');
-        Chat_Session__c s3 = makeSession(a, 'Pin3', 'Group');
-        Chat_Session__c s4 = makeSession(a, 'Pin4', 'Group');
+        // Create 4 sessions under b, pin 3, fail on 4th pin attempt
+        Inner_Chat_Session__c s1 = makeSession(a, 'Pin1', 'Group');
+        Inner_Chat_Session__c s2 = makeSession(a, 'Pin2', 'Group');
+        Inner_Chat_Session__c s3 = makeSession(a, 'Pin3', 'Group');
+        Inner_Chat_Session__c s4 = makeSession(a, 'Pin4', 'Group');
         addParticipants(s1.Id, new List<User>{ b, a });
         addParticipants(s2.Id, new List<User>{ b, a });
         addParticipants(s3.Id, new List<User>{ b, a });
@@ -200,7 +211,7 @@ private class ChatController_Test {
             } catch (Exception e) {
                 threw = true;
             }
-            System.assertEquals(true, threw, '고정 4개째는 예외');
+            System.assertEquals(true, threw, 'Fourth pin attempt throws exception');
         }
     }
 
@@ -210,7 +221,7 @@ private class ChatController_Test {
         User b = u2();
         User c = u3();
 
-        Chat_Session__c direct = makeSession(a, 'Direct Exists', 'Direct');
+        Inner_Chat_Session__c direct = makeSession(a, 'Direct Exists', 'Direct');
         addParticipants(direct.Id, new List<User>{ a, b });
 
         System.runAs(a) {
@@ -219,8 +230,8 @@ private class ChatController_Test {
             ChatController.CreateOrGetChatResult created = ChatController.createOrGetChatSession('New Group', new List<Id>{ b.Id, c.Id });
             Test.stopTest();
 
-            System.assertNotEquals(null, res.sessionId, '기존/생성 결과 존재');
-            System.assertNotEquals(null, created.sessionId, '신규 세션 생성됨');
+            System.assertNotEquals(null, res.sessionId, 'Result returns existing or created session');
+            System.assertNotEquals(null, created.sessionId, 'New group session created');
         }
     }
 
@@ -230,19 +241,19 @@ private class ChatController_Test {
         User b = u2();
         User c = u3();
 
-        Chat_Session__c s = makeSession(a, 'DeleteMe', 'Group');
+        Inner_Chat_Session__c s = makeSession(a, 'DeleteMe', 'Group');
         addParticipants(s.Id, new List<User>{ a, b, c });
         addMessage(s.Id, b, 'msg');
 
-        // c가 나가도 방은 유지
+        // User c leaves the chat
         System.runAs(c) {
             ChatController.leaveChatSession(s.Id);
         }
 
         System.assertEquals(
             1,
-            [SELECT COUNT() FROM Chat_Session__c WHERE Id = :s.Id],
-            '남은 참여자가 있으면 세션 유지'
+            [SELECT COUNT() FROM Inner_Chat_Session__c WHERE Id = :s.Id],
+            'Session remains if other participants exist'
         );
     }
 
@@ -250,14 +261,14 @@ private class ChatController_Test {
     static void test_leave_deletes_session_when_last_participant() {
         User a = u1();
 
-        // 마지막 참여자가 나가면 세션 삭제 분기
-        Chat_Session__c solo = makeSession(a, 'Solo', 'Direct');
+        // Create session with single participant then leave to trigger deletion
+        Inner_Chat_Session__c solo = makeSession(a, 'Solo', 'Direct');
         addParticipants(solo.Id, new List<User>{ a });
         addMessage(solo.Id, a, 'solo msg');
         System.runAs(a) {
             ChatController.leaveChatSession(solo.Id);
         }
-        System.assertEquals(0, [SELECT COUNT() FROM Chat_Session__c WHERE Id = :solo.Id], '마지막 참여자 나가면 세션 삭제');
+        System.assertEquals(0, [SELECT COUNT() FROM Inner_Chat_Session__c WHERE Id = :solo.Id], 'Session deleted when last participant leaves');
     }
 
     @IsTest
@@ -265,11 +276,11 @@ private class ChatController_Test {
         User a = u1();
         User b = u2();
 
-        Chat_Session__c s = makeSession(a, 'DeleteAuth', 'Group');
+        Inner_Chat_Session__c s = makeSession(a, 'DeleteAuth', 'Group');
         addParticipants(s.Id, new List<User>{ a, b });
         addMessage(s.Id, b, 'msg');
 
-        // 비생성자 삭제 불가
+        // Non-creator cannot delete
         System.runAs(b) {
             Boolean threw = false;
             try {
@@ -277,17 +288,16 @@ private class ChatController_Test {
             } catch (Exception e) {
                 threw = true;
             }
-            System.assertEquals(true, threw, '비생성자 삭제 불가');
+            System.assertEquals(true, threw, 'Non-creator cannot delete session');
         }
 
-        // 생성자 삭제 가능 + searchUsers 호출
+        // Creator can delete + verify searchUsers works
         System.runAs(a) {
             Test.startTest();
             ChatController.deleteChatSession(s.Id);
             List<User> found = ChatController.searchUsers('ChatTest');
             Test.stopTest();
-            System.assert(found.size() >= 0, '검색 호출 성공');
+            System.assert(found.size() >= 0, 'Search users returns results');
         }
     }
 }
-

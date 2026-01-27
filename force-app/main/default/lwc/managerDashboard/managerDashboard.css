@@ -1,0 +1,151 @@
+.pagination-ellipsis {
+    display: inline-block;
+    padding: 0.5rem 0;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.status-badge.available {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+}
+
+.status-badge.on-leave {
+    background-color: #fff3e0;
+    color: #e65100;
+}
+
+.status-badge.scheduled {
+    background-color: #e3f2fd;
+    color: #1565c0;
+}
+
+.status-badge.used {
+    background-color: #f3e5f5;
+    color: #6a1b9a;
+}
+
+.status-badge.on-duty {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+}
+
+.status-badge.off-duty {
+    background-color: #eceff1;
+    color: #546e7a;
+}
+
+/* 휴가 신청 관리 테이블 고정 레이아웃 */
+.leave-request-table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+/* 휴가 신청 관리 테이블 컬럼 너비 설정 */
+.leave-request-table th:nth-child(1),
+.leave-request-table td:nth-child(1) {
+    width: 10%;
+}
+
+.leave-request-table th:nth-child(2),
+.leave-request-table td:nth-child(2) {
+    width: 20%;
+}
+
+.leave-request-table th:nth-child(3),
+.leave-request-table td:nth-child(3) {
+    width: 10%;
+}
+
+.leave-request-table th:nth-child(4),
+.leave-request-table td:nth-child(4) {
+    width: 10%;
+}
+
+.leave-request-table th:nth-child(5),
+.leave-request-table td:nth-child(5) {
+    width: 10%;
+}
+
+.leave-request-table th:nth-child(6),
+.leave-request-table td:nth-child(6) {
+    width: 40%;
+    min-width: 200px;
+}
+
+/* 사유 컬럼 텍스트 줄바꿈 처리 */
+.leave-request-table td:nth-child(6) {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* 휴식 신청 관리 테이블 고정 레이아웃 */
+.break-request-table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+/* 휴식 신청 관리 테이블 컬럼 너비 설정 */
+.break-request-table th:nth-child(1),
+.break-request-table td:nth-child(1) {
+    width: 10%;
+}
+
+.break-request-table th:nth-child(2),
+.break-request-table td:nth-child(2) {
+    width: 10%;
+}
+
+.break-request-table th:nth-child(3),
+.break-request-table td:nth-child(3) {
+    width: 10%;
+}
+
+.break-request-table th:nth-child(4),
+.break-request-table td:nth-child(4) {
+    width: 15%;
+}
+
+.break-request-table th:nth-child(5),
+.break-request-table td:nth-child(5) {
+    width: 10%;
+}
+
+.break-request-table th:nth-child(6),
+.break-request-table td:nth-child(6) {
+    width: 10%;
+}
+
+.break-request-table th:nth-child(7),
+.break-request-table td:nth-child(7) {
+    width: 25%;
+    min-width: 200px;
+}
+
+.break-request-table th:nth-child(8),
+.break-request-table td:nth-child(8) {
+    width: 10%;
+}
+
+/* 사유 컬럼 텍스트 줄바꿈 처리 */
+.break-request-table td:nth-child(7) {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* 상단 탭에서 현재 선택된 탭을 더 명확하게 표시 (커스텀 클래스 사용) */
+.tab-link {
+    padding-bottom: 0.5rem;
+}
+
+.tab-link.tab-active {
+    border-bottom: 3px solid #1b96ff;
+    font-weight: 700;
+    color: #1b96ff;
+}

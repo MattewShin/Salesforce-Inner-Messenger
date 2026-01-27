@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Break_Type__c</fullName>
+    <description>Type of break: Morning Break (10min), Lunch (60min), Afternoon Break (10min)</description>
+    <label>Break Type</label>
+    <required>true</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Morning Break</fullName>
+                <default>false</default>
+                <label>Morning Break</label>
+            </value>
+            <value>
+                <fullName>Lunch</fullName>
+                <default>false</default>
+                <label>Lunch</label>
+            </value>
+            <value>
+                <fullName>Afternoon Break</fullName>
+                <default>false</default>
+                <label>Afternoon Break</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

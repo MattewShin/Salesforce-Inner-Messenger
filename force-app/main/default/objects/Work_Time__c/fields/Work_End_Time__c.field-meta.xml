@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Work_End_Time__c</fullName>
+    <description>Work end time</description>
+    <externalId>false</externalId>
+    <label>Work End Time</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Time</type>
+    <unique>false</unique>
+</CustomField>

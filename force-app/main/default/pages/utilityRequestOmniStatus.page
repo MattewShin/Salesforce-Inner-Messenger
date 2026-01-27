@@ -1,0 +1,380 @@
+<apex:page showHeader="false" sidebar="false">
+    <apex:includeLightning />
+    <!-- 🔑 필수: Omni Channel Console Integration JS -->
+    <apex:includeScript value="/support/console/60.0/integration.js"/>
+    <style>
+        /* 전체 페이지 최소화 - LWC는 로드하되 화면은 최소화 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+        }
+        
+        /* Visualforce Page 헤더/라벨 숨기기 */
+        .slds-page-header,
+        .slds-page-header__title,
+        .slds-page-header__name,
+        h1, h2, .pageTitle, .bPageTitle {
+            display: none !important;
+        }
+        
+        /* Lightning 컴포넌트 컨테이너 */
+        #lightningvf {
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+            display: block;
+        }
+        
+        /* LWC 컴포넌트가 전체 높이를 사용하도록 */
+        c-utility-request {
+            display: block;
+            height: 100%;
+            width: 100%;
+        }
+        
+        /* LWC 내부 컨테이너 스크롤 제거 및 높이 조절 */
+        c-utility-request .container {
+            height: 100%;
+            overflow-y: visible !important;
+            overflow-x: hidden;
+        }
+    </style>
+    <div id="lightningvf"></div>
+    <script>
+        var eventListenerAttached = false;
+        var statusChangeQueue = []; // 상태 변경 요청 큐
+        var isProcessingStatusChange = false; // 현재 상태 변경 처리 중인지
+        var lastStatusChangeTime = 0; // 마지막 상태 변경 시간
+        var STATUS_CHANGE_DEBOUNCE_MS = 500; // 디바운스 시간 (500ms)
+        
+        // 🔑 핵심: 옴니채널 상태 변경 함수 (큐 기반 순차 처리)
+        // 전역 함수로 노출하여 LWC에서 직접 호출 가능하도록
+        window.setServicePresenceStatus = function(statusId) {
+            console.log('[VF] window.setServicePresenceStatus called with statusId:', statusId, 'from caller:', arguments.callee.caller);
+            setServicePresenceStatusInternal(statusId);
+        };
+        
+        // window.parent와 window.top에도 노출 (다른 iframe에서 호출할 수 있도록)
+        try {
+            if (window.parent && window.parent !== window) {
+                window.parent.setServicePresenceStatus = window.setServicePresenceStatus;
+                console.log('[VF] Exposed setServicePresenceStatus to window.parent');
+            }
+        } catch (e) {
+            console.warn('[VF] Failed to expose setServicePresenceStatus to window.parent:', e);
+        }
+        
+        try {
+            if (window.top && window.top !== window && window.top !== window.parent) {
+                window.top.setServicePresenceStatus = window.setServicePresenceStatus;
+                console.log('[VF] Exposed setServicePresenceStatus to window.top');
+            }
+        } catch (e) {
+            console.warn('[VF] Failed to expose setServicePresenceStatus to window.top:', e);
+        }
+        
+        function setServicePresenceStatusInternal(statusId) {
+            console.log('[VF] setServicePresenceStatusInternal called with statusId:', statusId);
+            
+            // 디바운싱: 너무 빠른 연속 호출 방지
+            var now = Date.now();
+            if (now - lastStatusChangeTime < STATUS_CHANGE_DEBOUNCE_MS) {
+                console.log('Debouncing status change request...');
+                setTimeout(function() {
+                    setServicePresenceStatus(statusId);
+                }, STATUS_CHANGE_DEBOUNCE_MS - (now - lastStatusChangeTime));
+                return;
+            }
+            
+            // 큐에 동일한 상태 ID가 이미 있는지 확인 (중복 제거)
+            var existingIndex = -1;
+            for (var i = 0; i < statusChangeQueue.length; i++) {
+                if (statusChangeQueue[i].statusId === statusId) {
+                    existingIndex = i;
+                    break;
+                }
+            }
+            
+            if (existingIndex >= 0) {
+                // 동일한 상태 ID가 큐에 있으면 기존 항목을 제거하고 새로 추가 (최신 요청 우선)
+                console.log('Removing duplicate status change request from queue:', statusId);
+                statusChangeQueue.splice(existingIndex, 1);
+            }
+            
+            // 큐에 추가
+            statusChangeQueue.push({
+                statusId: statusId,
+                timestamp: now,
+                retryCount: 0
+            });
+            
+            // 큐 처리 시작
+            processStatusChangeQueue();
+        }
+        
+        // 상태 변경 큐 처리 (순차적으로 하나씩)
+        function processStatusChangeQueue() {
+            // 이미 처리 중이면 대기
+            if (isProcessingStatusChange) {
+                return;
+            }
+            
+            // 큐가 비어있으면 종료
+            if (statusChangeQueue.length === 0) {
+                return;
+            }
+            
+            // 처리 중 플래그 설정
+            isProcessingStatusChange = true;
+            
+            // 큐에서 첫 번째 요청 가져오기
+            var request = statusChangeQueue.shift();
+            var statusId = request.statusId;
+            var maxRetries = 3;
+            
+            console.log('Processing status change:', statusId, '(Queue length: ' + statusChangeQueue.length + ')');
+            
+            if (typeof sforce !== 'undefined' && sforce.console && sforce.console.presence) {
+                // 타임아웃 설정 (10초)
+                var timeoutId = setTimeout(function() {
+                    console.error('Status change API call timeout after 10 seconds:', statusId);
+                    isProcessingStatusChange = false;
+                    // 타임아웃 시 재시도
+                    if (request.retryCount < maxRetries) {
+                        request.retryCount++;
+                        console.warn('Status change timeout, retrying... (attempt ' + (request.retryCount + 1) + '/' + maxRetries + ')');
+                        statusChangeQueue.unshift(request);
+                        setTimeout(function() {
+                            processStatusChangeQueue();
+                        }, 500);
+                    } else {
+                        console.error('Status change failed after ' + maxRetries + ' retries (timeout):', statusId);
+                        setTimeout(function() {
+                            processStatusChangeQueue();
+                        }, 100);
+                    }
+                }, 10000);
+                
+                try {
+                    sforce.console.presence.setServicePresenceStatus(statusId, 
+                        function(result) { 
+                            clearTimeout(timeoutId); // 타임아웃 취소
+                            console.log('Status changed response:', result);
+                            
+                            // 응답 검증: success가 true이고 statusId가 있는지 확인
+                            var isSuccess = false;
+                            if (result) {
+                                // result가 객체이고 success가 true인 경우
+                                if (result.success === true || result.success === 'true') {
+                                    isSuccess = true;
+                                    lastStatusChangeTime = Date.now();
+                                    console.log('Status changed successfully:', statusId, result);
+                                } else if (result === true) {
+                                    // result 자체가 true인 경우 (일부 API 버전)
+                                    isSuccess = true;
+                                    lastStatusChangeTime = Date.now();
+                                    console.log('Status changed successfully (boolean true):', statusId);
+                                }
+                            }
+                            
+                            // 실패 시 재시도
+                            if (!isSuccess && request.retryCount < maxRetries) {
+                                request.retryCount++;
+                                console.warn('Status change failed, retrying... (attempt ' + (request.retryCount + 1) + '/' + maxRetries + ')', result);
+                                // 큐 앞에 다시 추가 (우선 처리)
+                                statusChangeQueue.unshift(request);
+                                // 500ms 후 재시도
+                                setTimeout(function() {
+                                    isProcessingStatusChange = false;
+                                    processStatusChangeQueue();
+                                }, 500);
+                            } else {
+                                // 성공 또는 최대 재시도 횟수 초과
+                                if (!isSuccess) {
+                                    console.error('Status change failed after ' + maxRetries + ' retries:', statusId, result);
+                                }
+                                // 처리 완료
+                                isProcessingStatusChange = false;
+                                // 다음 요청 처리
+                                setTimeout(function() {
+                                    processStatusChangeQueue();
+                                }, 100);
+                            }
+                        }
+                    );
+                } catch (error) {
+                    clearTimeout(timeoutId);
+                    console.error('Error calling setServicePresenceStatus:', error);
+                    // 에러 발생 시 재시도
+                    if (request.retryCount < maxRetries) {
+                        request.retryCount++;
+                        console.warn('Status change error, retrying... (attempt ' + (request.retryCount + 1) + '/' + maxRetries + ')');
+                        statusChangeQueue.unshift(request);
+                        setTimeout(function() {
+                            isProcessingStatusChange = false;
+                            processStatusChangeQueue();
+                        }, 500);
+                    } else {
+                        console.error('Status change failed after ' + maxRetries + ' retries (error):', statusId);
+                        isProcessingStatusChange = false;
+                        setTimeout(function() {
+                            processStatusChangeQueue();
+                        }, 100);
+                    }
+                }
+            } else {
+                console.error('sforce.console.presence API not available');
+                // API가 없으면 재시도하지 않고 큐에서 제거
+                isProcessingStatusChange = false;
+                // 다음 요청 처리
+                setTimeout(function() {
+                    processStatusChangeQueue();
+                }, 100);
+            }
+        }
+        
+        // 로그아웃 함수
+        // 전역 함수로 노출하여 LWC에서 직접 호출 가능하도록
+        window.logout = function() {
+            console.log('[VF] window.logout called', 'from caller:', arguments.callee.caller);
+            logoutInternal();
+        };
+        
+        // window.parent와 window.top에도 노출 (다른 iframe에서 호출할 수 있도록)
+        try {
+            if (window.parent && window.parent !== window) {
+                window.parent.logout = window.logout;
+                console.log('[VF] Exposed logout to window.parent');
+            }
+        } catch (e) {
+            console.warn('[VF] Failed to expose logout to window.parent:', e);
+        }
+        
+        try {
+            if (window.top && window.top !== window && window.top !== window.parent) {
+                window.top.logout = window.logout;
+                console.log('[VF] Exposed logout to window.top');
+            }
+        } catch (e) {
+            console.warn('[VF] Failed to expose logout to window.top:', e);
+        }
+        
+        function logoutInternal() {
+            console.log('[VF] logoutInternal called');
+            if (typeof sforce !== 'undefined' && sforce.console && sforce.console.presence) {
+                sforce.console.presence.logout(function(result) { 
+                    console.log('Logged out:', result);
+                    lastStatusChangeTime = Date.now();
+                });
+            } else {
+                console.error('[VF] sforce.console.presence API not available for logout');
+            }
+        }
+        
+        // 이벤트 핸들러 함수 (전역으로 정의하여 재사용)
+        function handleStatusEvent(event) {
+            console.log('[VF] selectedstatus event received:', event.detail);
+            if(event.detail && event.detail.statusId) {
+                // 옴니채널 상태 변경
+                setServicePresenceStatus(event.detail.statusId);
+            } else if(event.detail && event.detail.cmd === 'logout') {
+                // 로그아웃
+                logout();
+            }
+        }
+        
+        // postMessage 핸들러 (iframe 간 통신용)
+        function handlePostMessage(event) {
+            console.log('[VF] postMessage received:', event.data, 'from origin:', event.origin);
+            
+            if (event.data && event.data.type === 'selectedstatus') {
+                if (event.data.detail && event.data.detail.statusId) {
+                    console.log('[VF] selectedstatus postMessage received:', event.data.detail);
+                    setServicePresenceStatus(event.data.detail.statusId);
+                } else if (event.data.detail && event.data.detail.cmd === 'logout') {
+                    console.log('[VF] logout postMessage received');
+                    logoutInternal();
+                }
+            }
+        }
+        
+        // 이벤트 리스너 등록 함수 (실제 작동하는 코드와 동일한 방식)
+        function attachEventListener() {
+            if (eventListenerAttached) {
+                console.log('[VF] Event listener already attached');
+                return true;
+            }
+            
+            var lwcComponent = document.querySelector('c-utility-request');
+            var attached = false;
+            
+            if (lwcComponent) {
+                // 실제 작동하는 코드와 동일: LWC 컴포넌트에 직접 리스너 등록
+                lwcComponent.addEventListener('selectedstatus', handleStatusEvent);
+                attached = true;
+                console.log('[VF] Event listener attached to utilityRequest component');
+            }
+            
+            // document 레벨에도 리스너 등록 (이벤트가 bubbles up될 수 있도록)
+            document.addEventListener('selectedstatus', handleStatusEvent);
+            attached = true;
+            console.log('[VF] Event listener attached to document');
+            
+            // window 레벨에도 리스너 등록
+            if (window.addEventListener) {
+                window.addEventListener('selectedstatus', handleStatusEvent);
+                attached = true;
+                console.log('[VF] Event listener attached to window');
+            }
+            
+            // postMessage 리스너 등록 (iframe 간 통신용)
+            window.addEventListener('message', handlePostMessage);
+            attached = true;
+            console.log('[VF] postMessage listener attached');
+            
+            if (attached) {
+                eventListenerAttached = true;
+                return true;
+            } else {
+                console.warn('[VF] utilityRequest component not found, will retry...');
+                return false;
+            }
+        }
+        
+        console.log('[VF] Visualforce page loaded');
+        
+        // LWC 컴포넌트 로드
+        $Lightning.use("c:utilityRequestOmniStatus", function() {
+            $Lightning.createComponent("c:utilityRequest", {}, "lightningvf", 
+                function(cmp) {
+                    console.log('[VF] LWC component created');
+                    
+                    // 이벤트 리스너 등록 시도 (최대 10번, 500ms 간격)
+                    // 실제 작동하는 코드는 간단한 재시도 로직 사용
+                    var retryCount = 0;
+                    var maxRetries = 10;
+                    
+                    function tryAttachListener() {
+                        if (attachEventListener()) {
+                            console.log('[VF] Event listener attached successfully');
+                        } else {
+                            retryCount++;
+                            if (retryCount < maxRetries) {
+                                console.log('[VF] Retrying to attach event listener, attempt ' + (retryCount + 1) + '/' + maxRetries);
+                                setTimeout(tryAttachListener, 500);
+                            } else {
+                                console.error('[VF] Failed to attach event listener after ' + maxRetries + ' attempts');
+                            }
+                        }
+                    }
+                    
+                    // 첫 시도는 500ms 후 (실제 작동하는 코드와 유사한 타이밍)
+                    setTimeout(tryAttachListener, 500);
+                });
+        });
+    </script>
+</apex:page>

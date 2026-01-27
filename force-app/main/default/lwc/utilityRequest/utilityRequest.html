@@ -1,0 +1,443 @@
+<template>
+    <div class="container slds-p-around_small">
+        <!-- 탭 네비게이션 -->
+        <div class="slds-tabs_default">
+            <ul class="slds-tabs_default__nav" role="tablist">
+                <li class="slds-tabs_default__item" title="휴식 신청" role="presentation">
+                     <a class={breakTabClass} href="javascript:void(0);" role="tab" onclick={handleTabClick} data-tab="break">
+                        휴식 신청
+                    </a>
+                </li>
+                <li class="slds-tabs_default__item" title="휴가 신청" role="presentation">
+                    <a class={leaveTabClass} href="javascript:void(0);" role="tab" onclick={handleTabClick} data-tab="leave">
+                        휴가 신청
+                    </a>
+                </li>
+                <li class="slds-tabs_default__item" title="내 신청 내역" role="presentation">
+                    <a class={historyTabClass} href="javascript:void(0);" role="tab" onclick={handleTabClick} data-tab="history">
+                        내 신청 내역
+                    </a>
+                </li>
+                <li class="slds-tabs_default__item" title="캘린더" role="presentation">
+                    <a class={calendarTabClass} href="javascript:void(0);" role="tab" onclick={handleTabClick} data-tab="calendar">
+                        캘린더
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="content-area slds-m-top_small">
+            <!-- 휴가 신청 탭 -->
+            <template if:true={isLeaveTab}>
+                <div class="slds-card">
+                    <div class="slds-card__header slds-grid">
+                        <header class="slds-media slds-media_center slds-has-flexi-truncate">
+                            <div class="slds-media__body">
+                                <h2 class="slds-card__header-title">
+                                    <span>휴가 신청</span>
+                                </h2>
+                            </div>
+                        </header>
+                    </div>
+                    <div class="slds-card__body slds-card__body_inner">
+                        <template if:true={leaveError}>
+                            <div class="slds-text-color_error slds-m-bottom_small">
+                                {leaveError}
+                            </div>
+                        </template>
+                        <lightning-record-edit-form object-api-name="Leave_Request__c" record-id={leaveRequestId} onsuccess={handleLeaveSuccess} onsubmit={handleLeaveFormSubmit} data-form="leave">
+                            <div class="slds-grid slds-gutters slds-wrap">
+                                <div class="slds-col slds-size_1-of-2">
+                                    <lightning-input-field field-name="Start_Date__c" required onchange={handleLeaveFieldChange} data-field-name="Start_Date__c"></lightning-input-field>
+                                </div>
+                                <div class="slds-col slds-size_1-of-2">
+                                    <lightning-input-field field-name="Start_Slot__c" required onchange={handleLeaveFieldChange} data-field-name="Start_Slot__c"></lightning-input-field>
+                                </div>
+                                <div class="slds-col slds-size_1-of-2">
+                                    <lightning-input-field field-name="End_Date__c" required onchange={handleLeaveFieldChange} data-field-name="End_Date__c"></lightning-input-field>
+                                </div>
+                                <div class="slds-col slds-size_1-of-2">
+                                    <lightning-input-field field-name="End_Slot__c" required onchange={handleLeaveFieldChange} data-field-name="End_Slot__c"></lightning-input-field>
+                                </div>
+                                <div class="slds-col slds-size_1-of-1">
+                                    <lightning-input-field field-name="Leave_Type__c" required onchange={handleLeaveFieldChange} data-field-name="Leave_Type__c"></lightning-input-field>
+                                </div>
+                                <div class="slds-col slds-size_1-of-1">
+                                    <lightning-input-field field-name="Reason__c" onchange={handleLeaveFieldChange} data-field-name="Reason__c"></lightning-input-field>
+                                </div>
+                                <div class="slds-col slds-size_1-of-1">
+                                    <template if:true={leaveDays}>
+                                        <div class="slds-text-body_regular slds-m-bottom_small">
+                                            <strong>계산된 휴가 일수: {leaveDays}일</strong>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </lightning-record-edit-form>
+                        <div class="slds-m-top_medium">
+                            <lightning-button type="button" variant="neutral" label="휴가 일수" onclick={handleOpenBalance}></lightning-button>
+                            <lightning-button type="button" variant="brand" label={draftButtonLabel} class="slds-m-left_small" onclick={handleLeaveSaveDraft}></lightning-button>
+                            <lightning-button type="button" variant="brand" label="제출" onclick={handleLeaveSubmit} class="slds-m-left_small"></lightning-button>
+                            <lightning-button type="button" variant="neutral" label="초기화" onclick={handleLeaveReset} class="slds-m-left_small"></lightning-button>
+                            <template if:true={leaveRequestId}>
+                                <lightning-button type="button" variant="destructive" label="취소" onclick={handleLeaveCancel} class="slds-m-left_small"></lightning-button>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- 휴식 신청 탭 -->
+            <template if:true={isBreakTab}>
+                <div class="slds-card">
+                    <div class="slds-card__header slds-grid">
+                        <header class="slds-media slds-media_center slds-has-flexi-truncate">
+                            <div class="slds-media__body">
+                                <h2 class="slds-card__header-title">
+                                    <span>휴식 신청</span>
+                                </h2>
+                            </div>
+                        </header>
+                    </div>
+                    <div class="slds-card__body slds-card__body_inner">
+                        <template if:true={breakError}>
+                            <div class="slds-text-color_error slds-m-bottom_small">
+                                {breakError}
+                            </div>
+                        </template>
+                        <template if:true={showBreakTimer}>
+                            <div class="break-timer-container slds-m-bottom_medium">
+                                <div class="break-timer">
+                                    <lightning-icon icon-name="utility:clock" size="small" class="slds-m-right_x-small"></lightning-icon>
+                                    <span class="break-timer-label">휴식 시간:</span>
+                                    <span class="break-timer-time">{breakTimerDisplay}</span>
+                                </div>
+                            </div>
+                        </template>
+                        <lightning-record-edit-form object-api-name="Break_Request__c" record-id={breakRequestId} onsuccess={handleBreakSuccess} data-form="break">
+                            <div class="slds-grid slds-gutters slds-wrap">
+                                <!-- 출근/퇴근 토글 버튼 -->
+                                <div class="slds-col slds-size_1-of-1 slds-m-bottom_small">
+                                    <div class={workTimeCardClass}>
+                                        <div class="work-time-header">
+                                            <div class="work-time-icon-container">
+                                                <!-- <lightning-icon 
+                                                    icon-name={isOnDuty ? "utility:clock" : "utility:offline"}
+                                                    size="small"
+                                                    class={isOnDuty ? "work-time-icon-active" : "work-time-icon-inactive"}>
+                                                </lightning-icon> -->
+                                            </div>
+                                            <div class="work-time-content">
+                                                <div class="work-time-title-row">
+                                                    <span class={workTimeLabelClass}>근무중</span>
+                                                    <lightning-input 
+                                                        type="toggle" 
+                                                        label="" 
+                                                        checked={isOnDuty}
+                                                        onchange={handleWorkTimeToggle}
+                                                        data-toggle="workTime"
+                                                        class="work-time-toggle">
+                                                    </lightning-input>
+                                                </div>
+                                                <template if:true={isOnDuty}>
+                                                    <div class="work-time-info">
+                                                        <span class="work-time-label-small">출근:</span>
+                                                        <span class="work-time-value">{formattedWorkStartTime}</span>
+                                                    </div>
+                                                </template>
+                                                <template if:false={isOnDuty}>
+                                                    <template if:true={formattedWorkStartTime}>
+                                                        <div class="work-time-info">
+                                                            <span class="work-time-label-small">출근:</span>
+                                                            <span class="work-time-value">{formattedWorkStartTime}</span>
+                                                            <template if:true={formattedWorkEndTime}>
+                                                                <span class="work-time-label-small work-time-separator">퇴근:</span>
+                                                                <span class="work-time-value">{formattedWorkEndTime}</span>
+                                                            </template>
+                                                        </div>
+                                                    </template>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="slds-col slds-size_1-of-1">
+                                    <lightning-input-field field-name="Date__c" disabled onchange={handleBreakDateChange}></lightning-input-field>
+                                </div>
+                                <div class="slds-col slds-size_1-of-1">
+                                    <lightning-input-field field-name="Break_Type__c" required onchange={handleBreakTypeChange}></lightning-input-field>
+                                </div>
+                                <div class="slds-col slds-size_1-of-1">
+                                    <lightning-input-field field-name="Reason__c" onchange={handleBreakFieldChange} data-field-name="Reason__c"></lightning-input-field>
+                                </div>
+                            </div>
+                            <div class="slds-m-top_medium">
+                                <lightning-button type="button" variant="brand" label="제출 (자동 승인)" onclick={handleBreakSubmit}></lightning-button>
+                                <lightning-button type="button" variant="neutral" label="초기화" onclick={handleBreakReset} class="slds-m-left_small"></lightning-button>
+                                <template if:true={breakRequestId}>
+                                    <lightning-button type="button" variant="destructive" label="취소" onclick={handleBreakCancel} class="slds-m-left_small"></lightning-button>
+                                </template>
+                            </div>
+                        </lightning-record-edit-form>
+                    </div>
+                </div>
+            </template>
+
+            <!-- 내 신청 내역 탭 -->
+            <template if:true={isHistoryTab}>
+                <div class="slds-card">
+                    <div class="slds-card__header slds-grid">
+                        <header class="slds-media slds-media_center slds-has-flexi-truncate">
+                            <div class="slds-media__body">
+                                <h2 class="slds-card__header-title">
+                                    <span>내 신청 내역</span>
+                                </h2>
+                            </div>
+                        </header>
+                    </div>
+                    <div class="slds-card__body slds-card__body_inner">
+                        <div class="history-tabs-container">
+                            <ul class="history-tabs-nav" role="tablist">
+                                <li class="history-tab-item" title="휴가" role="presentation">
+                                    <a class={leaveHistoryTabClass} href="javascript:void(0);" role="tab" onclick={handleHistorySubTabChange} data-tab="leave">
+                                        휴가
+                                    </a>
+                                </li>
+                                <li class="history-tab-item" title="휴식" role="presentation">
+                                    <a class={breakHistoryTabClass} href="javascript:void(0);" role="tab" onclick={handleHistorySubTabChange} data-tab="break">
+                                        휴식
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                        <template if:true={isLoadingHistory}>
+                            <lightning-spinner alternative-text="Loading"></lightning-spinner>
+                        </template>
+                        <template if:false={isLoadingHistory}>
+                            <!-- 휴가 내역 -->
+                            <template if:true={isLeaveHistory}>
+                                <template if:true={hasLeaveHistory}>
+                                    <table class="slds-table slds-table_cell-buffer slds-table_bordered slds-m-top_small history-table leave-history-table">
+                                        <thead>
+                                            <tr>
+                                                <th>시작일</th>
+                                                <th>종료일</th>
+                                                <th>일수</th>
+                                                <th>상태</th>
+                                                <th>타입</th>
+                                                <th>액션</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <template for:each={leaveHistory} for:item="leave">
+                                                <tr key={leave.Id}>
+                                                    <td>{leave.startDateLabel}</td>
+                                                    <td>{leave.endDateLabel}</td>
+                                                    <td>{leave.Days__c}</td>
+                                                    <td><span class={leave.statusClass}>{leave.statusLabel}</span></td>
+                                                    <td>{leave.Leave_Type__c}</td>
+                                                    <td>
+                                                        <template if:true={leave.canCancel}>
+                                                            <lightning-button-icon icon-name="utility:close" variant="bare" onclick={handleLeaveCancelFromHistory} data-id={leave.Id}></lightning-button-icon>
+                                                        </template>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                    <template if:true={hasMoreLeaveHistory}>
+                                        <div class="slds-text-align_center slds-m-top_medium">
+                                            <lightning-button label="전체 보기" variant="neutral" onclick={handleViewAllLeaves}></lightning-button>
+                                        </div>
+                                    </template>
+                                </template>
+                                <template if:false={hasLeaveHistory}>
+                                    <div class="slds-text-align_center slds-p-around_medium">
+                                        <p>휴가 신청 내역이 없습니다.</p>
+                                    </div>
+                                </template>
+                            </template>
+                            <!-- 휴식 내역 -->
+                            <template if:true={isBreakHistory}>
+                                <template if:true={hasBreakHistory}>
+                                    <table class="slds-table slds-table_cell-buffer slds-table_bordered slds-m-top_small history-table break-history-table">
+                                        <thead>
+                                            <tr>
+                                                <th>날짜</th>
+                                                <th>타입</th>
+                                                <th>시간</th>
+                                                <th>소요 시간</th>
+                                                <th>상태</th>
+                                                <th>액션</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <template for:each={breakHistory} for:item="breakItem">
+                                                <tr key={breakItem.Id}>
+                                                    <td>{breakItem.dateLabel}</td>
+                                                    <td>{breakItem.Break_Type__c}</td>
+                                                    <td>{breakItem.timeLabel}</td>
+                                                    <td>{breakItem.Duration_Minutes__c}분</td>
+                                                    <td><span class={breakItem.statusClass}>{breakItem.statusLabel}</span></td>
+                                                    <td>
+                                                        <template if:true={breakItem.canCancel}>
+                                                            <lightning-button-icon icon-name="utility:close" variant="bare" onclick={handleBreakCancelFromHistory} data-id={breakItem.Id}></lightning-button-icon>
+                                                        </template>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                    <template if:true={hasMoreBreakHistory}>
+                                        <div class="slds-text-align_center slds-m-top_medium">
+                                            <lightning-button label="전체 보기" variant="neutral" onclick={handleViewAllBreaks}></lightning-button>
+                                        </div>
+                                    </template>
+                                </template>
+                                <template if:false={hasBreakHistory}>
+                                    <div class="slds-text-align_center slds-p-around_medium">
+                                        <p>휴식 신청 내역이 없습니다.</p>
+                                    </div>
+                                </template>
+                            </template>
+                        </template>
+                    </div>
+                </div>
+            </template>
+
+            <!-- 캘린더 탭 -->
+            <template if:true={isCalendarTab}>
+                <div class="slds-card">
+                    <div class="slds-card__body slds-card__body_inner">
+                        <!-- 월 네비게이션 -->
+                        <div class="slds-grid slds-grid_align-spread slds-m-bottom_medium">
+                            <lightning-button-icon icon-name="utility:chevronleft" variant="bare" onclick={handlePrevMonth}></lightning-button-icon>
+                            <div class="slds-text-heading_medium">
+                                {currentMonthLabel}
+                            </div>
+                            <lightning-button-icon icon-name="utility:chevronright" variant="bare" onclick={handleNextMonth}></lightning-button-icon>
+                        </div>
+                        
+                        <!-- 달력 뷰 -->
+                        <template if:true={isLoadingCalendar}>
+                            <lightning-spinner alternative-text="Loading"></lightning-spinner>
+                        </template>
+                        <template if:false={isLoadingCalendar}>
+                            <div class="calendar-container">
+                                <!-- 요일 헤더 -->
+                                <div class="calendar-weekdays">
+                                    <div class="calendar-weekday">일</div>
+                                    <div class="calendar-weekday">월</div>
+                                    <div class="calendar-weekday">화</div>
+                                    <div class="calendar-weekday">수</div>
+                                    <div class="calendar-weekday">목</div>
+                                    <div class="calendar-weekday">금</div>
+                                    <div class="calendar-weekday">토</div>
+                                </div>
+                                <!-- 날짜 그리드 -->
+                                <div class="calendar-grid">
+                                    <template for:each={calendarDays} for:item="day">
+                                        <div key={day.key} class={day.dayClass}>
+                                            <div class="calendar-day-number">{day.dayNumber}</div>
+                                            <div class="calendar-day-indicators">
+                                                <template if:true={day.hasMorningBreak}>
+                                                    <span class="calendar-indicator break-indicator morning" title="오전 휴식"></span>
+                                                </template>
+                                                <template if:true={day.hasAfternoonBreak}>
+                                                    <span class="calendar-indicator break-indicator afternoon" title="오후 휴식"></span>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                            
+                            <!-- 범례 -->
+                            <div class="slds-m-top_medium">
+                                <div class="slds-grid slds-gutters">
+                                    <div class="slds-col">
+                                        <span class="calendar-legend-item">
+                                            <span class="calendar-legend-swatch leave-full" aria-hidden="true"></span>
+                                            <span class="slds-m-left_x-small">휴가(종일)</span>
+                                        </span>
+                                    </div>
+                                    <div class="slds-col">
+                                        <span class="calendar-legend-item">
+                                            <span class="calendar-legend-swatch leave-am" aria-hidden="true"></span>
+                                            <span class="slds-m-left_x-small">휴가(오전)</span>
+                                        </span>
+                                    </div>
+                                    <div class="slds-col">
+                                        <span class="calendar-legend-item">
+                                            <span class="calendar-legend-swatch leave-pm" aria-hidden="true"></span>
+                                            <span class="slds-m-left_x-small">휴가(오후)</span>
+                                        </span>
+                                    </div>
+                                    <div class="slds-col">
+                                        <span class="calendar-legend-item">
+                                            <span class="calendar-indicator break-indicator morning"></span>
+                                            <span class="slds-m-left_x-small">오전 휴식</span>
+                                        </span>
+                                    </div>
+                                    <div class="slds-col">
+                                        <span class="calendar-legend-item">
+                                            <span class="calendar-indicator break-indicator afternoon"></span>
+                                            <span class="slds-m-left_x-small">오후 휴식</span>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- 연도별 휴가 일수 모달 -->
+        <template if:true={showBalanceModal}>
+            <section role="dialog" tabindex="-1" aria-modal="true" class="slds-modal slds-fade-in-open">
+                <div class="slds-modal__container">
+                    <header class="slds-modal__header">
+                        <h2 class="slds-text-heading_medium">연도별 휴가 일수</h2>
+                    </header>
+                    <div class="slds-modal__content slds-p-around_medium">
+                        <template if:true={isLoadingBalance}>
+                            <lightning-spinner alternative-text="Loading"></lightning-spinner>
+                        </template>
+                        <template if:false={isLoadingBalance}>
+                            <template if:true={hasYearlyBalances}>
+                                <table class="slds-table slds-table_cell-buffer slds-table_bordered">
+                                    <thead>
+                                        <tr>
+                                            <th>연도</th>
+                                            <th>부여 일수</th>
+                                            <th>사용 일수</th>
+                                            <th>잔여 일수</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template for:each={yearlyBalances} for:item="item">
+                                            <tr key={item.year}>
+                                                <td>{item.year}</td>
+                                                <td>{item.totalDays}</td>
+                                                <td>{item.usedDays}</td>
+                                                <td>{item.remainingDays}</td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </template>
+                            <template if:false={hasYearlyBalances}>
+                                <p>등록된 연도별 휴가 정보가 없습니다.</p>
+                            </template>
+                        </template>
+                    </div>
+                    <footer class="slds-modal__footer">
+                        <lightning-button label="닫기" onclick={handleCloseBalance}></lightning-button>
+                    </footer>
+                </div>
+            </section>
+            <div class="slds-backdrop slds-backdrop_open"></div>
+        </template>
+    </div>
+</template>

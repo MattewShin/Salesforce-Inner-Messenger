@@ -1,34 +1,90 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Package xmlns="http://soap.sforce.com/2006/04/metadata">
-    <!--
-      Chat 기능은 Apex/LWC/Aura 외에도 CustomObject(세션/메시지/참여자/Platform Event)와
-      PermissionSet(FLS/CRUD)이 반드시 필요합니다.
-    -->
+    <!-- ===== APEX CLASSES ===== -->
+    <!-- Chat functionality -->
     <types>
         <members>ChatController</members>
         <members>ChatController_Test</members>
         <name>ApexClass</name>
     </types>
+    
+    <!-- Leave functionality -->
+    <types>
+        <members>LeaveRequestController</members>
+        <members>LeaveRequestController_Test</members>
+        <members>LeaveService</members>
+        <members>LeaveService_Test</members>
+        <members>LeaveRequestTriggerHandler</members>
+        <members>LeaveRequestTriggerHandler_Test</members>
+        <members>LeaveBalanceController</members>
+        <name>ApexClass</name>
+    </types>
+    
+    <!-- Break functionality -->
+    <types>
+        <members>BreakRequestController</members>
+        <members>BreakService</members>
+        <members>BreakRequestTriggerHandler</members>
+        <name>ApexClass</name>
+    </types>
+    
+    <!-- Work time functionality -->
+    <types>
+        <members>WorkTimeController</members>
+        <members>WorkTimeController_Test</members>
+        <members>WorkTimeTriggerHandler</members>
+        <name>ApexClass</name>
+    </types>
+    
+    <!-- Manager/Admin functionality -->
+    <types>
+        <members>ManagerDashboardController</members>
+        <members>OmniPresenceHelper</members>
+        <name>ApexClass</name>
+    </types>
+
+    <!-- ===== UI COMPONENTS ===== -->
+    <!-- Aura Components -->
     <types>
         <members>chatFlashAura</members>
+        <members>utilityRequestOmniStatus</members>
         <name>AuraDefinitionBundle</name>
     </types>
+    
+    <!-- Lightning Web Components -->
     <types>
         <members>utilityChat</members>
+        <members>utilityRequest</members>
+        <members>managerDashboard</members>
         <name>LightningComponentBundle</name>
     </types>
-    <!-- Chat 데이터 모델(Platform Event 포함: Chat_Notification__e) -->
+
+    <!-- ===== CUSTOM OBJECTS ===== -->
+    <!-- Chat data model -->
     <types>
-        <members>Chat_Session__c</members>
-        <members>Chat_Message__c</members>
-        <members>Chat_Participant__c</members>
-        <members>Chat_Notification__e</members>
+        <members>Inner_Chat_Session__c</members>
+        <members>Inner_Chat_Message__c</members>
+        <members>Inner_Chat_Participant__c</members>
+        <members>Inner_Chat_Notification__e</members>
         <name>CustomObject</name>
     </types>
-    <!-- 권한(클래스 접근 + 오브젝트/필드 권한) -->
+    
+    <!-- Leave & Break management -->
+    <types>
+        <members>Leave_Request__c</members>
+        <members>Leave_Entitlement__c</members>
+        <members>Break_Request__c</members>
+        <members>Work_Time__c</members>
+        <name>CustomObject</name>
+    </types>
+
+    <!-- ===== PERMISSION SETS ===== -->
     <types>
         <members>Internal_Chat_Permission_Set</members>
+        <members>Leave_Break_Employee_Permission_Set</members>
+        <members>Leave_Break_Manager_Permission_Set</members>
         <name>PermissionSet</name>
     </types>
+
     <version>65.0</version>
 </Package>

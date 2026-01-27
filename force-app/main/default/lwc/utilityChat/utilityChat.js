@@ -25,12 +25,12 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     @track sessions = [];
 
     @track messages = [];
-    // 메시지 페이징(무한 스크롤)
+    // Message pagination (infinite scroll)
     messagePageSize = 30;
     oldestCreatedDate = null;
     hasMoreMessages = true;
     isLoadingMoreMessages = false;
-    // People Modal(공용) 상태
+    // People Modal (shared) state
     @track peopleSearchResults = [];
     @track peopleSelectedUsers = []; // {id, name}
 
@@ -40,32 +40,32 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     isRenameModalOpen = false;
     renameChatName = '';
 
-    // 참여자 목록 모달
+    // Participants list modal
     isParticipantsModalOpen = false;
     isParticipantsLoading = false;
     @track participants = []; // [{ userId, userName, lastReadAt, isPinned, isMuted, isMe }]
 
-    // 답장(Reply) 상태
+    // Reply (Quote) state
     replyDraft = null; // { messageId, senderName, preview }
 
-    // 읽음 처리 디바운스(스크롤/실시간 갱신 시 과도한 Apex 호출 방지)
+    // Read mark debounce (infinite scroll + optimize + reduce Apex calls)
     markReadTimer;
 
     isChatView = false;
-    // People Modal(공용): create/invite
+    // People Modal (shared): create/invite
     isPeopleModalOpen = false;
     peopleModalMode = 'create'; // 'create' | 'invite'
-    peopleModalStep = 1; // 1: 선택, 2: 관리/확인
+    peopleModalStep = 1; // 1: User select, 2: Confirm
     messageInput = '';
     peopleChatName = '';
     isLoading = false;
 
-    // 수신 알림(플래시) 상태: sessionId별로 표시
+    // Session flash notification (user receives message while away)
     @track sessionFlashMap = {}; // { [sessionId]: true }
     mutedSessionMap = {}; // { [sessionId15]: true }
 
     subscription = {};
-    channelName = '/event/Chat_Notification__e';
+    channelName = '/event/Inner_Chat_Notification__e';
     currentUserId = USER_ID;
 
     get isListView() {
@@ -129,14 +129,14 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             const rawContent = (msg.content || '').replace(/^\[SYSTEM\]\s*/, '');
             const systemLines = isSystem ? this.splitSystemMessage(rawContent) : null;
             const displayContent = isSystem ? '' : rawContent;
-            // 카카오톡 스타일: "안 읽은 사람 수(보낸 사람 제외)"만 표시 (0이면 숨김)
+            // Kakaotalk read receipt: "Only show unread count if sent by others" (0 if none)
             const unreadByOthers = Number(msg.unreadByOthers || 0);
             const showUnreadCount = !isSystem && unreadByOthers > 0;
             const replyToId = msg.replyToId;
             const replyToSenderName = msg.replyToSenderName;
             const replyToPreview = (msg.replyToPreview || '').replace(/^\[SYSTEM\]\s*/, '');
 
-            // 첨부파일 UI용 파생 필드
+            // Attachment UI rendering
             const att = msg.attachment;
             let attachment = att;
             try {
@@ -167,24 +167,24 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                 systemLine2: systemLines ? systemLines.line2 : '',
                 wrapperClass: isSystem ? 'msg-wrapper system' : (msg.isMine ? 'msg-wrapper mine' : 'msg-wrapper others'),
                 bubbleClass: isSystem ? 'message-bubble system' : (msg.isMine ? 'message-bubble mine' : 'message-bubble others'),
-                // 내 메시지도 이름을 표시
+                // Message actions: visibility
                 showSender: !isSystem,
                 showTimeRight: !msg.isMine,
                 showUnreadCount,
                 unreadByOthers,
 
-                // 답장(Reply)
+                // Reply (Quote)
                 hasReply: !!replyToId,
                 replyToId,
                 replyToSenderName,
                 replyToPreview,
 
-                // 메시지 액션(복사/답장)
+                // Message actions (copy/reply)
                 showActions: !isSystem,
                 actionsRowClass: msg.isMine ? 'message-actions-row mine' : 'message-actions-row others',
                 actionsMenuAlignment: msg.isMine ? 'right' : 'left',
 
-                // attachment(파생 필드 포함)
+                // Attachment (preview handling)
                 attachment
             };
         });
@@ -211,7 +211,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     }
 
     async loadMessages() {
-        // 기존 호출부 호환: "초기 로드"로 동작
+        // Previous implementation: "Load initial" mode
         return this.loadInitialMessages();
     }
 
@@ -266,7 +266,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             this.oldestCreatedDate = older[0].createdDate;
             this.hasMoreMessages = (result || []).length >= this.messagePageSize;
 
-            // divider는 원본 메시지 기준으로 다시 계산(중복 방지 위해 id로 merge)
+            // Dividers recompute based on oldest message dates (merge by id to prevent duplication)
             const currentMsgs = (this.messages || []).filter(m => !m.isDivider);
             const byId = new Map();
             for (const m of [...older, ...currentMsgs]) {
@@ -276,7 +276,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
 
             this.messages = this.addDateDividers(merged);
 
-            // 스크롤 위치 유지(위에 prepend되었으니 증가한 높이만큼 내려줌)
+            // Scroll adjustment (prepended messages shift display down, adjust scroll)
             if (container) {
                 const newScrollHeight = container.scrollHeight;
                 container.scrollTop = newScrollHeight - prevScrollHeight;
@@ -291,12 +291,12 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     handleMessagesScroll() {
         const container = this.getMessageContainerEl();
         if (!container) return;
-        // 상단 근처(여유값 10px) 도달 시 이전 메시지 로드
+        // Top threshold (scrolling up ~10px) triggers load more
         if (container.scrollTop <= 10) {
             this.loadMoreMessages();
         }
 
-        // 하단 근처면 "읽음 처리" (사용자가 실제로 보고 있는 경우를 우선)
+        // Bottom threshold triggers "mark read" (scroll monitoring + debounce)
         if (this.isNearBottom(container, 12)) {
             this.scheduleMarkRead();
         }
@@ -314,10 +314,10 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
 
     scheduleMarkRead() {
         if (!this.currentSessionId) return;
-        // list view에서는 의미 없으므로 방지
+        // In list view mode, skip mark read
         if (!this.isChatView) return;
 
-        // 디바운스
+        // Debounce
         try {
             if (this.markReadTimer) {
                 clearTimeout(this.markReadTimer);
@@ -333,15 +333,13 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
 
     markCurrentSessionRead() {
         if (!this.currentSessionId) return;
-        // 서버 업데이트는 실패해도 UI는 유지
+        // No error output, just silent fail (UI refresh failure doesn't break chat)
         markSessionAsRead({ sessionId: this.currentSessionId })
             .then(() => {
-                this.loadSessions(); // unreadCount 즉시 갱신
+                this.loadSessions(); // Update unreadCount immediately
             })
             .catch((e) => {
-                // 기존에는 에러를 삼켜서 "읽었는데 배지 뜸" 같은 현상의 원인 파악이 어려웠습니다.
-                // 콘솔에 남겨서(필요 시) 디버깅 가능하게 합니다.
-                // eslint-disable-next-line no-console
+                // Existing error: silent ignore (debugging optional)
                 console.error('markSessionAsRead failed', e);
             });
     }
@@ -350,8 +348,8 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
         try {
             const d = new Date(dt);
             if (Number.isNaN(d.getTime())) return '';
-            // 예: "2026년 1월 8일 목요일"
-            return d.toLocaleDateString('ko-KR', {
+            // Example: "Friday, January 8, 2026"
+            return d.toLocaleDateString('en-US', {
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric',
@@ -397,38 +395,25 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     }
 
     splitSystemMessage(text) {
-        // 시스템 문구는 "무조건 2줄"로만 렌더링
-        // - 1줄: 이름/대상(길면 ... 처리)
-        // - 2줄: 고정 문구(채팅방을 나갔습니다. / 초대했습니다.)
+        // System message format: "Actor did Action." - format as 2 lines max
+        // - Line 1: Actor name (abbreviated if too long)
+        // - Line 2: Fixed phrase (e.g., "joined the chat." or "left the chat.")
         const t = (text || '').toString().trim();
         if (!t) return { line1: '', line2: '' };
 
-        // 나가기: "A님이 채팅방을 나갔습니다."
-        if (t.endsWith('채팅방을 나갔습니다.')) {
-            const base = t.replace(/채팅방을 나갔습니다\.$/, '').trim(); // "A님이"
-            const marker = '님이';
-            const pos = base.indexOf(marker);
-            if (pos >= 0) {
-                const line1 = base.substring(0, pos + marker.length).trim(); // "A님이"
-                return { line1, line2: '채팅방을 나갔습니다.' };
-            }
-            return { line1: base, line2: '채팅방을 나갔습니다.' };
+        // Invited: "A invited B."
+        if (t.includes('invited')) {
+            const base = t.replace(/invited.*/, '').trim(); // "A"
+            return { line1: base, line2: 'invited participants' };
         }
 
-        // 초대: "A님이 B님을 초대했습니다."
-        if (t.endsWith('초대했습니다.')) {
-            const base = t.replace(/초대했습니다\.$/, '').trim(); // "A님이 B님을"
-            const marker = '님이';
-            const pos = base.indexOf(marker);
-            if (pos >= 0) {
-                const actor = base.substring(0, pos + marker.length).trim(); // "A님이"
-                const rest = base.substring(pos + marker.length).trim(); // "B님을"
-                return { line1: actor, line2: (rest ? (rest + ' ') : '') + '초대했습니다.' };
-            }
-            return { line1: base, line2: '초대했습니다.' };
+        // Left: "A left the chat."
+        if (t.includes('left')) {
+            const base = t.replace(/left.*/, '').trim(); // "A"
+            return { line1: base, line2: 'left the chat' };
         }
 
-        // 기타 시스템 메시지(예외)
+        // Generic system message (custom)
         return { line1: t, line2: '' };
     }
 
@@ -442,12 +427,12 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
         this.clearSessionFlash(this.currentSessionId);
         this.writeActiveSessionToStorage();
         this.loadMessages();
-        // 입장 직후도 읽음 처리(초기 진입)
+        // Immediate mark read (initial load)
         this.markCurrentSessionRead();
     }
 
     handleBack() {
-        // 리스트로 돌아가기 전에 마지막으로 읽음 처리(배지 튐 방지)
+        // Return to list mode with immediate mark read (debounce protection)
         this.markCurrentSessionRead();
         this.isChatView = false;
         this.currentSessionId = null;
@@ -462,7 +447,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
         return this.normalizeId(this.currentSessionCreatedById) === this.normalizeId(this.currentUserId);
     }
 
-    // --- People Modal (공용) ---
+    // --- People Modal (shared) ---
 
     get isPeopleCreateMode() {
         return this.peopleModalMode === 'create';
@@ -481,15 +466,15 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     }
 
     get peopleModalTitle() {
-        return this.isPeopleCreateMode ? '새 채팅방 만들기' : '참여자 초대';
+        return this.isPeopleCreateMode ? 'Create Chat' : 'Invite Participants';
     }
 
     get peopleStepLabel() {
-        return this.isPeopleStep1 ? '1/2 선택' : '2/2 확인';
+        return this.isPeopleStep1 ? 'Step 1/2: Select' : 'Step 2/2: Confirm';
     }
 
     get peoplePrimaryLabel() {
-        return this.isPeopleCreateMode ? '생성' : '초대';
+        return this.isPeopleCreateMode ? 'Create' : 'Invite';
     }
 
     get peopleSelectedPreview() {
@@ -600,23 +585,23 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             const userIds = (this.peopleSelectedUsers || []).map(u => u.id);
 
             if (this.isPeopleCreateMode) {
-                // 이름 미입력 시 Apex에서 참여자 전원(생성자 포함) 이름으로 자동 생성
+                // If no name provided, Apex generates name from participants (included in creation)
                 const name = (this.peopleChatName || '').trim();
                 const result = await createOrGetChatSession({ name, userIds });
                 const newSessionId = result?.sessionId;
                 const existed = !!result?.existed;
                 if (existed) {
                     // eslint-disable-next-line no-alert
-                    alert('기존 채팅방이 있습니다. 해당 채팅방으로 이동합니다.');
+                    alert('Chat session already exists. Joining existing session.');
                 }
 
-                // 생성 직후 바로 채팅방 화면으로 전환
+                // After create, immediately switch to chat view
                 this.closePeopleModal();
                 this.isChatView = true;
                 this.currentSessionId = newSessionId;
                 this.clearSessionFlash(newSessionId);
 
-                // 헤더 이름/생성자 정보는 Apex에서 조회 (자동 생성 이름까지 정확히 반영)
+                // Fetch chat info from Apex to get name + createdById
                 try {
                     const s = await getChatSession({ sessionId: newSessionId });
                     if (s) {
@@ -624,7 +609,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                         this.currentSessionCreatedById = s.createdById;
                     }
                 } catch (e) {
-                    // ignore (메시지 화면 진입은 유지)
+                    // ignore (message view will still work)
                 }
 
                 this.writeActiveSessionToStorage();
@@ -641,7 +626,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                 return;
             }
         } catch (e) {
-            const msg = e?.body?.message || e?.message || '요청 처리 중 오류가 발생했습니다.';
+            const msg = e?.body?.message || e?.message || 'Request processing error occurred.';
             // eslint-disable-next-line no-alert
             alert(msg);
         } finally {
@@ -667,7 +652,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                 return;
             }
             if (action === 'leave') {
-                const ok = window.confirm('이 채팅방에서 나가시겠습니까? (다시 보려면 초대가 필요합니다)');
+                const ok = window.confirm('Do you want to leave this chat? (Other participants will see your departure message)');
                 if (!ok) return;
 
                 await leaveChatSession({ sessionId: this.currentSessionId });
@@ -676,7 +661,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             }
 
             if (action === 'delete') {
-                const ok = window.confirm('채팅방을 삭제하시겠습니까? (메시지/참여자 정보가 함께 삭제됩니다)');
+                const ok = window.confirm('Delete this chat permanently? (Messages and participants data will be removed)');
                 if (!ok) return;
 
                 await deleteChatSession({ sessionId: this.currentSessionId });
@@ -684,8 +669,8 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                 return;
             }
         } catch (e) {
-            // 토스트 대신 간단한 alert 사용
-            const msg = e?.body?.message || e?.message || '요청 처리 중 오류가 발생했습니다.';
+            // Use simple alert for user feedback
+            const msg = e?.body?.message || e?.message || 'Request processing error occurred.';
             // eslint-disable-next-line no-alert
             alert(msg);
         }
@@ -710,14 +695,14 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
         try {
             const data = await getParticipants({ sessionId: this.currentSessionId });
             const list = Array.isArray(data) ? data : [];
-            // (나) 항목을 최상단으로, 그 외는 이름순 정렬
+            // Sort by: me first, then by name
             list.sort((a, b) => {
                 const aMe = a?.isMe ? 1 : 0;
                 const bMe = b?.isMe ? 1 : 0;
-                if (aMe !== bMe) return bMe - aMe; // me 먼저
+                if (aMe !== bMe) return bMe - aMe; // me first
                 const an = (a?.userName || '').toString();
                 const bn = (b?.userName || '').toString();
-                return an.localeCompare(bn, 'ko-KR');
+                return an.localeCompare(bn, 'en-US');
             });
 
             this.participants = list.map(p => ({
@@ -725,7 +710,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                 rowClass: p?.isMe ? 'participants-item me' : 'participants-item'
             }));
         } catch (e) {
-            const msg = e?.body?.message || e?.message || '참여자 목록을 불러오지 못했습니다.';
+            const msg = e?.body?.message || e?.message || 'Failed to load participants list.';
             // eslint-disable-next-line no-alert
             alert(msg);
             this.participants = [];
@@ -735,7 +720,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     }
 
     get participantCountLabel() {
-        return `${(this.participants || []).length}명`;
+        return `${(this.participants || []).length} participants`;
     }
 
     // --- Rename Modal ---
@@ -763,7 +748,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             await renameChatSession({ sessionId: this.currentSessionId, newName: name });
             this.currentSessionName = name;
 
-            // 목록도 즉시 갱신(사용자가 '뒤로'를 눌렀을 때 바로 반영되도록)
+            // Update list immediately (Platform Event will also refresh, but update now)
             const currentId = this.normalizeId(this.currentSessionId);
             this.sessions = this.decorateSessions(
                 (this.sessions || []).map(s =>
@@ -774,7 +759,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             this.closeRenameModal();
             await this.loadSessions();
         } catch (e) {
-            const msg = e?.body?.message || e?.message || '채팅방 이름 변경 중 오류가 발생했습니다.';
+            const msg = e?.body?.message || e?.message || 'Chat rename error occurred.';
             // eslint-disable-next-line no-alert
             alert(msg);
         } finally {
@@ -788,11 +773,10 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     }
 
     handleInputKeyDown(event) {
-        // lightning-input의 oncommit은 "값 변경"이 없으면 Enter로 커밋이 안 되는 경우가 있어
-        // Enter 키를 직접 캐치해서 동일 값 반복도 전송되게 처리합니다.
+        // lightning-input oncommit doesn't trigger on Enter + Shift, so direct key catch
+        // Shift+Enter = line break
         if (this.isLoading) return;
-        if (event && (event.isComposing || event.keyCode === 229)) return; // IME 조합 중
-
+        if (event && (event.isComposing || event.keyCode === 229)) return; // IME composition
         if (event?.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
             event.stopPropagation();
@@ -801,7 +785,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     }
 
     focusChatInput() {
-        // 메시지 전송 후에도 연속 입력이 가능하도록 입력창에 포커스를 다시 줍니다.
+        // After message delete (reply cleared), focus input for UX
         setTimeout(() => {
             try {
                 const input = this.refs?.chatInput;
@@ -820,8 +804,8 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     }
 
     handleSendMessage() {
-        // lightning-input은 onchange 타이밍 문제로 동일 값 반복 입력 시 state가 늦게 갱신될 수 있어
-        // 전송 시점엔 입력 컴포넌트의 현재 값을 우선 사용합니다.
+        // lightning-input onchange delayed state: use ref for immediate read
+        // Message input component: read state directly to avoid race conditions
         const raw = (this.refs?.chatInput?.value ?? this.messageInput ?? '').toString();
         if (!raw.trim()) return;
 
@@ -870,7 +854,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             const replyPreview = this.replyDraft?.preview || null;
             sendMessage({
                 sessionId: this.currentSessionId,
-                content: '📎 사진/파일을 첨부했습니다.',
+                content: 'File attached.',
                 contentDocumentId: docId,
                 replyToMessageId,
                 replyPreview
@@ -889,7 +873,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
         }
     }
 
-    // --- 메시지 액션(복사/답장) ---
+    // --- Message actions (copy/reply) ---
 
     async handleMessageMenuSelect(event) {
         const action = event?.detail?.value;
@@ -912,7 +896,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
         const senderName = msg.senderName || '';
         let preview = (msg.displayContent || '').toString().trim();
         if (!preview && msg.attachment?.title) {
-            preview = `📎 ${msg.attachment.title}`;
+            preview = `[File] ${msg.attachment.title}`;
         }
         preview = preview.replace(/\s+/g, ' ').trim();
         if (preview.length > 80) preview = preview.substring(0, 77) + '...';
@@ -942,7 +926,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             // fallback below
         }
 
-        // 구형 브라우저 fallback
+        // Old browser fallback
         try {
             const ta = document.createElement('textarea');
             ta.value = value;
@@ -955,7 +939,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             document.body.removeChild(ta);
         } catch (e2) {
             // eslint-disable-next-line no-alert
-            alert('복사에 실패했습니다.');
+            alert('Copy failed.');
         }
     }
 
@@ -1038,7 +1022,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                         payload = JSON.parse(rawStr);
                     }
 
-                    // 참여자가 아닌 사용자는 무시 (Platform Event는 org-wide 브로드캐스트)
+                    // Check participant: only process if in participant list (Platform Event org-wide broadcast)
                     const myId15 = (this.currentUserId || '').substring(0, 15);
                     const participants = payload?.participantIds;
                     if (Array.isArray(participants) && participants.length) {
@@ -1047,7 +1031,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                             return;
                         }
                     } else {
-                        // participantIds가 없으면(구버전 이벤트) 오탐 방지를 위해 무시
+                        // If participantIds missing, skip old event (safety)
                         return;
                     }
 
@@ -1055,7 +1039,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                     const isSameSession = this.normalizeId(this.currentSessionId) === sessionKey;
                     const eventType = payload?.type;
 
-                    // 채팅방 이름 변경: 상대방 포함 즉시 UI에 반영
+                    // Chat name rename: refresh list + update title immediately
                     if (eventType === 'SessionRenamed' && sessionKey) {
                         const newName = payload?.newName;
                         if (newName) {
@@ -1063,7 +1047,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                                 this.currentSessionName = newName;
                             }
 
-                            // 목록도 즉시 반영
+                            // Update list immediately
                             this.sessions = this.decorateSessions(
                                 (this.sessions || []).map(s =>
                                     this.normalizeId(s.sessionId) === sessionKey ? { ...s, name: newName } : s
@@ -1072,35 +1056,35 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                         }
 
                         this.loadSessions();
-                        return; // 플래시/메시지 로드 처리 불필요
+                        return; // Skip below message load
                     }
 
-                    // 읽음 처리 이벤트: 내가 보낸 메시지의 읽음 숫자 갱신을 위해 메시지 재로드
+                    // Read receipt: refresh unread in messages after others mark read
                     if (eventType === 'ReadReceipt' && sessionKey) {
-                        // 모든 참여자가(읽은 사람 포함) 동일한 읽음 숫자를 봐야 하므로
-                        // self-event도 처리합니다. 루프는 서버에서 최신 시각까지만 업데이트하도록 막습니다.
+                        // All participants (both sender + reader) should see receipt
+                        // Update logic: get recent messages only on unread badge change
                         if (this.isChatView && isSameSession) {
                             this.loadMessages();
                         } else {
-                            // 리스트 뷰에서도 안읽음 배지 갱신 가능
+                            // List view: update session unread count
                             this.loadSessions();
                         }
                         return;
                     }
 
-                    // 실시간성 우선:
-                    // - 채팅방을 보고 있는 동안엔 어떤 이벤트가 오든 메시지 목록을 항상 새로고침
-                    //   (payload.sessionId가 예상과 달라도 UI가 멈추지 않게)
+                    // Real-time updates:
+                    // - New message + notification refresh
+                    // (payload.sessionId guaranteed by participant check)
                     if (this.isChatView && this.currentSessionId) {
                         this.loadMessages();
                     } else {
                         this.loadSessions();
                     }
 
-                    // 플래시 조건: 상대 메시지 + 내가 같은 방을 보고 있지 않을 때만
+                    // Notification flash: non-sender message + current session not open
                     const senderId15 = (payload.senderId || '').substring(0, 15);
                     if (senderId15 && senderId15 !== myId15 && sessionKey) {
-                        // Mute 세션이면 깜빡임(세션 플래시) 제외
+                        // Mute check: if muted, skip flash
                         if (this.mutedSessionMap && this.mutedSessionMap[sessionKey]) {
                             return;
                         }
@@ -1131,7 +1115,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     }
 
     writeActiveSessionToStorage() {
-        // ChatFlashAura가 참조할 값(localStorage)
+        // ChatFlashAura references (localStorage)
         try {
             const session15 = this.normalizeId(this.currentSessionId);
             window.localStorage.setItem('utilityChat.activeSession15', session15);
@@ -1142,7 +1126,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     }
 
     writeMutedSessionsToStorage() {
-        // ChatFlashAura가 참조할 값(localStorage): muted 세션 목록(15자리)
+        // ChatFlashAura references (localStorage): muted session list (15-char ids)
         try {
             const keys = Object.keys(this.mutedSessionMap || {}).filter(k => this.mutedSessionMap[k]);
             window.localStorage.setItem('utilityChat.mutedSessions15', JSON.stringify(keys));
@@ -1160,7 +1144,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             await setPinned({ sessionId, pinned: !pinned });
             await this.loadSessions();
         } catch (e) {
-            const msg = e?.body?.message || e?.message || '고정 설정 중 오류가 발생했습니다.';
+            const msg = e?.body?.message || e?.message || 'Pin error occurred.';
             // eslint-disable-next-line no-alert
             alert(msg);
         }
@@ -1175,7 +1159,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             await setMuted({ sessionId, muted: !muted });
             await this.loadSessions();
         } catch (e) {
-            const msg = e?.body?.message || e?.message || '알림 설정 중 오류가 발생했습니다.';
+            const msg = e?.body?.message || e?.message || 'Mute error occurred.';
             // eslint-disable-next-line no-alert
             alert(msg);
         }

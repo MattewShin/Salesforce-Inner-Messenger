@@ -1,95 +1,106 @@
+/**
+ * ===========================================================================================
+ * @description       : Controller for Internal Chat functionality (sessions, messages, participants, Platform Events)
+ * @author            : CNXK
+ * @last modified on  : 2025-01-XX
+ * @last modified by  : CNXK
+ * ===========================================================================================
+ * Modification Log
+ * Ver   Date         Author              Description
+ * 1.0   2025-01-XX   CNXK                Initial version - Chat session management, message sending/receiving, participant management, and real-time notifications via Platform Events
+ */
 public with sharing class ChatController {
     
-    // 채팅방 목록 조회 (현재 사용자가 참여 중인 방)
+    // Retrieve chat sessions the current user is participating in
     @AuraEnabled
     public static List<ChatSessionWrapper> getChatSessions() {
         Id currentUserId = UserInfo.getUserId();
         
-        List<Chat_Participant__c> participations = [
-            SELECT Chat_Session__c, Chat_Session__r.Name, Chat_Session__r.Type__c,
-                   Chat_Session__r.LastModifiedDate, Chat_Session__r.CreatedById,
-                   Chat_Session__r.Last_Message_At__c,
+        List<Inner_Chat_Participant__c> participations = [
+            SELECT Inner_Chat_Session__c, Inner_Chat_Session__r.Name, Inner_Chat_Session__r.Type__c,
+                   Inner_Chat_Session__r.LastModifiedDate, Inner_Chat_Session__r.CreatedById,
+                   Inner_Chat_Session__r.Last_Message_At__c,
                    Last_Read_At__c,
                    Is_Pinned__c,
                    Is_Muted__c
-            FROM Chat_Participant__c
+            FROM Inner_Chat_Participant__c
             WHERE User__c = :currentUserId
-            ORDER BY Is_Pinned__c DESC, Chat_Session__r.Last_Message_At__c DESC, Chat_Session__r.LastModifiedDate DESC
+            ORDER BY Is_Pinned__c DESC, Inner_Chat_Session__r.Last_Message_At__c DESC, Inner_Chat_Session__r.LastModifiedDate DESC
         ];
         
-        // 안읽음 계산: 각 세션별 Last_Read_At__c 이후의 메시지 수(내 메시지/시스템 메시지 제외)
+        // Calculate unread message count: Messages in session after Last_Read_At__c (excluding system messages and own messages)
         Map<Id, DateTime> lastReadMap = new Map<Id, DateTime>();
         Set<Id> sessionIds = new Set<Id>();
         DateTime minLastRead = null;
-        for (Chat_Participant__c p : participations) {
-            sessionIds.add(p.Chat_Session__c);
+        for (Inner_Chat_Participant__c p : participations) {
+            sessionIds.add(p.Inner_Chat_Session__c);
             DateTime lr = p.Last_Read_At__c;
-            if (lr == null) lr = DateTime.newInstance(1970, 1, 1, 0, 0, 0); // 미읽음 상태(전체를 대상으로)
-            lastReadMap.put(p.Chat_Session__c, lr);
+            if (lr == null) lr = DateTime.newInstance(1970, 1, 1, 0, 0, 0); // Unread state (entire conversation)
+            lastReadMap.put(p.Inner_Chat_Session__c, lr);
             if (minLastRead == null || lr < minLastRead) minLastRead = lr;
         }
 
         Map<Id, Integer> unreadMap = new Map<Id, Integer>();
         if (!sessionIds.isEmpty() && minLastRead != null) {
-            List<Chat_Message__c> msgs = [
-                SELECT Chat_Session__c, CreatedDate, Sender__c, Content__c
-                FROM Chat_Message__c
-                WHERE Chat_Session__c IN :sessionIds
+            List<Inner_Chat_Message__c> msgs = [
+                SELECT Inner_Chat_Session__c, CreatedDate, Sender__c, Content__c
+                FROM Inner_Chat_Message__c
+                WHERE Inner_Chat_Session__c IN :sessionIds
                   AND CreatedDate > :minLastRead
                 ORDER BY CreatedDate ASC
             ];
-            for (Chat_Message__c m : msgs) {
-                // 내 메시지는 unread로 치지 않음
+            for (Inner_Chat_Message__c m : msgs) {
+                // Skip own messages from unread count
                 if (m.Sender__c == currentUserId) continue;
-                // 시스템 메시지는 unread에서 제외(원하면 포함으로 변경 가능)
+                // Skip system messages from unread count (may change based on requirements)
                 if (m.Content__c != null && m.Content__c.startsWith('[SYSTEM]')) continue;
 
-                DateTime lr = lastReadMap.get(m.Chat_Session__c);
+                DateTime lr = lastReadMap.get(m.Inner_Chat_Session__c);
                 if (lr != null && m.CreatedDate <= lr) continue;
 
-                Integer cur = unreadMap.containsKey(m.Chat_Session__c) ? unreadMap.get(m.Chat_Session__c) : 0;
-                unreadMap.put(m.Chat_Session__c, cur + 1);
+                Integer cur = unreadMap.containsKey(m.Inner_Chat_Session__c) ? unreadMap.get(m.Inner_Chat_Session__c) : 0;
+                unreadMap.put(m.Inner_Chat_Session__c, cur + 1);
             }
         }
 
-        // 마지막 메시지 프리뷰(시스템 메시지 제외)
+        // Get last message preview (excluding system messages)
         Map<Id, String> lastPreviewMap = new Map<Id, String>();
         if (!sessionIds.isEmpty()) {
-            List<Chat_Message__c> latestMsgs = [
-                SELECT Chat_Session__c, Content__c, CreatedDate
-                FROM Chat_Message__c
-                WHERE Chat_Session__c IN :sessionIds
+            List<Inner_Chat_Message__c> latestMsgs = [
+                SELECT Inner_Chat_Session__c, Content__c, CreatedDate
+                FROM Inner_Chat_Message__c
+                WHERE Inner_Chat_Session__c IN :sessionIds
                 ORDER BY CreatedDate DESC
             ];
-            for (Chat_Message__c m : latestMsgs) {
-                if (m.Chat_Session__c == null) continue;
-                if (lastPreviewMap.containsKey(m.Chat_Session__c)) continue; // 세션별 1개만
+            for (Inner_Chat_Message__c m : latestMsgs) {
+                if (m.Inner_Chat_Session__c == null) continue;
+                if (lastPreviewMap.containsKey(m.Inner_Chat_Session__c)) continue; // One message per session
                 String c = (m.Content__c == null) ? '' : m.Content__c;
-                // 시스템 메시지는 프리뷰에서 제외
+                // Exclude system messages from preview
                 if (!String.isBlank(c) && c.startsWith('[SYSTEM]')) continue;
                 c = c.replace('\n', ' ').replace('\r', ' ').trim();
-                // 너무 길면 서버에서도 1차 축약(최종 ... 처리는 UI에서도 가능)
+                // Truncate if too long (final ... handled in UI)
                 Integer maxLen = 80;
                 if (c.length() > maxLen) {
                     c = c.substring(0, maxLen - 3) + '...';
                 }
-                lastPreviewMap.put(m.Chat_Session__c, c);
+                lastPreviewMap.put(m.Inner_Chat_Session__c, c);
             }
         }
 
         List<ChatSessionWrapper> results = new List<ChatSessionWrapper>();
-        for (Chat_Participant__c p : participations) {
-            Integer unread = unreadMap.containsKey(p.Chat_Session__c) ? unreadMap.get(p.Chat_Session__c) : 0;
-            DateTime lastMsgAt = (p.Chat_Session__r.Last_Message_At__c != null)
-                ? p.Chat_Session__r.Last_Message_At__c
-                : p.Chat_Session__r.LastModifiedDate; // 메시지가 없으면 fallback
-            String preview = lastPreviewMap.containsKey(p.Chat_Session__c) ? lastPreviewMap.get(p.Chat_Session__c) : '';
-            results.add(new ChatSessionWrapper(p.Chat_Session__r, unread, lastMsgAt, p.Is_Pinned__c, p.Is_Muted__c, preview));
+        for (Inner_Chat_Participant__c p : participations) {
+            Integer unread = unreadMap.containsKey(p.Inner_Chat_Session__c) ? unreadMap.get(p.Inner_Chat_Session__c) : 0;
+            DateTime lastMsgAt = (p.Inner_Chat_Session__r.Last_Message_At__c != null)
+                ? p.Inner_Chat_Session__r.Last_Message_At__c
+                : p.Inner_Chat_Session__r.LastModifiedDate; // Fallback if no messages
+            String preview = lastPreviewMap.containsKey(p.Inner_Chat_Session__c) ? lastPreviewMap.get(p.Inner_Chat_Session__c) : '';
+            results.add(new ChatSessionWrapper(p.Inner_Chat_Session__r, unread, lastMsgAt, p.Is_Pinned__c, p.Is_Muted__c, preview));
         }
         return results;
     }
 
-    // 단일 채팅방 조회 (생성 직후 UI 전환용)
+    // Retrieve single chat session (after creation for UI refresh)
     @AuraEnabled
     public static ChatSessionWrapper getChatSession(Id sessionId) {
         if (sessionId == null) return null;
@@ -97,17 +108,17 @@ public with sharing class ChatController {
         Id me = UserInfo.getUserId();
         Integer mine = [
             SELECT COUNT()
-            FROM Chat_Participant__c
-            WHERE Chat_Session__c = :sessionId
+            FROM Inner_Chat_Participant__c
+            WHERE Inner_Chat_Session__c = :sessionId
               AND User__c = :me
         ];
         if (mine == 0) {
-            throw new AuraHandledException('참여자가 아닌 사용자는 채팅방 정보를 조회할 수 없습니다.');
+            throw new AuraHandledException('Non-participant users cannot retrieve chat session information.');
         }
 
-        Chat_Session__c s = [
+        Inner_Chat_Session__c s = [
             SELECT Id, Name, Type__c, LastModifiedDate, CreatedById, Last_Message_At__c
-            FROM Chat_Session__c
+            FROM Inner_Chat_Session__c
             WHERE Id = :sessionId
             LIMIT 1
         ];
@@ -115,35 +126,35 @@ public with sharing class ChatController {
         return new ChatSessionWrapper(s, 0, lastMsgAt, false, false, null);
     }
 
-    // 고정(Pin) 설정
+    // Set pin status for chat session
     @AuraEnabled
     public static void setPinned(Id sessionId, Boolean pinned) {
         if (sessionId == null) return;
         Id me = UserInfo.getUserId();
         Boolean willPin = (pinned == true);
 
-        List<Chat_Participant__c> mine = [
+        List<Inner_Chat_Participant__c> mine = [
             SELECT Id, Is_Pinned__c
-            FROM Chat_Participant__c
-            WHERE Chat_Session__c = :sessionId
+            FROM Inner_Chat_Participant__c
+            WHERE Inner_Chat_Session__c = :sessionId
               AND User__c = :me
             LIMIT 1
         ];
         if (mine.isEmpty()) return;
 
-        // 이미 고정된 상태에서 다시 고정 요청이면 그대로
+        // If already pinned and pin requested again, do nothing
         if (willPin && mine[0].Is_Pinned__c == true) return;
 
-        // 고정 최대 3개 제한
+        // Pinned sessions limited to 3 maximum
         if (willPin) {
             Integer pinnedCount = [
                 SELECT COUNT()
-                FROM Chat_Participant__c
+                FROM Inner_Chat_Participant__c
                 WHERE User__c = :me
                   AND Is_Pinned__c = true
             ];
             if (pinnedCount >= 3) {
-                throw new AuraHandledException('채팅방 고정은 최대 3개까지만 가능합니다.');
+                throw new AuraHandledException('Chat pin limit is 3 maximum.');
             }
         }
 
@@ -151,15 +162,15 @@ public with sharing class ChatController {
         update mine[0];
     }
 
-    // 알림 끄기(Mute) 설정
+    // Set mute status for chat session
     @AuraEnabled
     public static void setMuted(Id sessionId, Boolean muted) {
         if (sessionId == null) return;
         Id me = UserInfo.getUserId();
-        List<Chat_Participant__c> mine = [
+        List<Inner_Chat_Participant__c> mine = [
             SELECT Id, Is_Muted__c
-            FROM Chat_Participant__c
-            WHERE Chat_Session__c = :sessionId
+            FROM Inner_Chat_Participant__c
+            WHERE Inner_Chat_Session__c = :sessionId
               AND User__c = :me
             LIMIT 1
         ];
@@ -168,7 +179,7 @@ public with sharing class ChatController {
         update mine[0];
     }
 
-    // 참여자 목록 조회 (현재 채팅방에 참여 중인 사용자)
+    // Retrieve list of participants (users currently in chat)
     @AuraEnabled
     public static List<ChatParticipantWrapper> getParticipants(Id sessionId) {
         if (sessionId == null) return new List<ChatParticipantWrapper>();
@@ -176,54 +187,54 @@ public with sharing class ChatController {
         Id me = UserInfo.getUserId();
         Integer mine = [
             SELECT COUNT()
-            FROM Chat_Participant__c
-            WHERE Chat_Session__c = :sessionId
+            FROM Inner_Chat_Participant__c
+            WHERE Inner_Chat_Session__c = :sessionId
               AND User__c = :me
         ];
         if (mine == 0) {
-            throw new AuraHandledException('참여자가 아닌 사용자는 참여자 목록을 조회할 수 없습니다.');
+            throw new AuraHandledException('Non-participant users cannot retrieve participant list.');
         }
 
-        List<Chat_Participant__c> parts = [
+        List<Inner_Chat_Participant__c> parts = [
             SELECT Id,
                    User__c, User__r.Name,
                    Last_Read_At__c,
                    Is_Pinned__c,
                    Is_Muted__c
-            FROM Chat_Participant__c
-            WHERE Chat_Session__c = :sessionId
+            FROM Inner_Chat_Participant__c
+            WHERE Inner_Chat_Session__c = :sessionId
             ORDER BY User__r.Name ASC
         ];
 
         List<ChatParticipantWrapper> results = new List<ChatParticipantWrapper>();
-        for (Chat_Participant__c p : parts) {
+        for (Inner_Chat_Participant__c p : parts) {
             results.add(new ChatParticipantWrapper(p));
         }
         return results;
     }
 
-    // 채팅방 읽음 처리 (현재 사용자 참여자 레코드의 Last_Read_At__c 갱신)
+    // Mark chat session as read (update current user's participant Last_Read_At__c)
     @AuraEnabled
     public static void markSessionAsRead(Id sessionId) {
         if (sessionId == null) return;
         Id me = UserInfo.getUserId();
 
-        List<Chat_Participant__c> mine = [
+        List<Inner_Chat_Participant__c> mine = [
             SELECT Id, Last_Read_At__c
-            FROM Chat_Participant__c
-            WHERE Chat_Session__c = :sessionId
+            FROM Inner_Chat_Participant__c
+            WHERE Inner_Chat_Session__c = :sessionId
               AND User__c = :me
             LIMIT 1
         ];
         if (mine.isEmpty()) return;
 
-        // "지금 시각"이 아니라 "채팅방의 최신 메시지 시각"까지만 읽음으로 처리해야
-        // ReadReceipt 이벤트가 무한 루프를 만들지 않습니다.
+        // Important: "view receipt" is NOT the same as "read receipt for latest message".
+        // ReadReceipt Platform Event must avoid infinite loops.
         DateTime latestMsgAt = null;
-        List<Chat_Message__c> latest = [
+        List<Inner_Chat_Message__c> latest = [
             SELECT CreatedDate
-            FROM Chat_Message__c
-            WHERE Chat_Session__c = :sessionId
+            FROM Inner_Chat_Message__c
+            WHERE Inner_Chat_Session__c = :sessionId
             ORDER BY CreatedDate DESC
             LIMIT 1
         ];
@@ -231,24 +242,24 @@ public with sharing class ChatController {
         if (latestMsgAt == null) return;
 
         DateTime prev = mine[0].Last_Read_At__c;
-        if (prev != null && prev >= latestMsgAt) return; // 이미 최신까지 읽음
+        if (prev != null && prev >= latestMsgAt) return; // Already up to date
 
         mine[0].Last_Read_At__c = latestMsgAt;
         update mine[0];
 
-        // 읽음 이벤트(상대방 UI 즉시 갱신용)
+        // Publish read receipt Platform Event (for immediate UI refresh)
         if (prev == null || prev < latestMsgAt) {
-            List<Chat_Participant__c> parts = [
+            List<Inner_Chat_Participant__c> parts = [
                 SELECT User__c
-                FROM Chat_Participant__c
-                WHERE Chat_Session__c = :sessionId
+                FROM Inner_Chat_Participant__c
+                WHERE Inner_Chat_Session__c = :sessionId
             ];
             List<String> participantIds = new List<String>();
-            for (Chat_Participant__c p : parts) {
+            for (Inner_Chat_Participant__c p : parts) {
                 if (p.User__c != null) participantIds.add(String.valueOf(p.User__c).substring(0, 15));
             }
 
-            Chat_Notification__e notif = new Chat_Notification__e(
+            Inner_Chat_Notification__e notif = new Inner_Chat_Notification__e(
                 Payload__c = JSON.serialize(new Map<String, Object>{
                     'type' => 'ReadReceipt',
                     'sessionId' => sessionId,
@@ -261,34 +272,34 @@ public with sharing class ChatController {
         }
     }
 
-    // 특정 채팅방의 메시지 조회
-    // 채팅은 실시간성이 중요하므로 캐시를 사용하지 않습니다.
+    // Get messages for specific chat session
+    // Real-time synchronization is important, so caching is not recommended.
     @AuraEnabled
     public static List<MessageWrapper> getMessages(Id sessionId) {
         Map<Id, DateTime> lastReadByUser = new Map<Id, DateTime>();
-        for (Chat_Participant__c p : [
+        for (Inner_Chat_Participant__c p : [
             SELECT User__c, Last_Read_At__c
-            FROM Chat_Participant__c
-            WHERE Chat_Session__c = :sessionId
+            FROM Inner_Chat_Participant__c
+            WHERE Inner_Chat_Session__c = :sessionId
         ]) {
             if (p.User__c != null) lastReadByUser.put(p.User__c, p.Last_Read_At__c);
         }
         Integer totalParticipants = lastReadByUser.size();
 
-        List<Chat_Message__c> msgs = [
+        List<Inner_Chat_Message__c> msgs = [
             SELECT Id, Content__c, Sender__c, Sender__r.Name, CreatedDate,
                    Reply_To__c, Reply_Preview__c,
                    Reply_To__r.Content__c, Reply_To__r.Sender__r.Name,
                    (SELECT ContentDocumentId, ContentDocument.Title, ContentDocument.FileExtension, ContentDocument.LatestPublishedVersionId
                     FROM ContentDocumentLinks LIMIT 1)
-            FROM Chat_Message__c
-            WHERE Chat_Session__c = :sessionId
+            FROM Inner_Chat_Message__c
+            WHERE Inner_Chat_Session__c = :sessionId
             ORDER BY CreatedDate ASC
             LIMIT 50
         ];
         
         List<MessageWrapper> results = new List<MessageWrapper>();
-        for (Chat_Message__c msg : msgs) {
+        for (Inner_Chat_Message__c msg : msgs) {
             Integer unreadByOthers = 0;
             for (Id uid : lastReadByUser.keySet()) {
                 if (uid == msg.Sender__c) continue;
@@ -302,27 +313,27 @@ public with sharing class ChatController {
         return results;
     }
 
-    // 메시지 페이징 조회(무한 스크롤용)
-    // - before: null이면 최신 메시지부터 limit개를 가져옵니다.
-    // - before가 있으면 before 이전(더 과거) 메시지들을 limit개 가져옵니다.
-    // 반환은 CreatedDate ASC(화면 렌더링 편의)로 정렬합니다.
+    // Get paged messages (infinite scroll)
+    // - before: if null, returns latest limitSize messages
+    // - if before is set, returns limitSize messages before that timestamp
+    // Returns ordered by CreatedDate ASC (oldest first)
     @AuraEnabled
     public static List<MessageWrapper> getMessagesPaged(Id sessionId, Datetime before, Integer limitSize) {
         if (sessionId == null) return new List<MessageWrapper>();
         Integer lim = (limitSize == null || limitSize <= 0) ? 50 : Math.min(limitSize, 200);
 
         Map<Id, DateTime> lastReadByUser = new Map<Id, DateTime>();
-        for (Chat_Participant__c p : [
+        for (Inner_Chat_Participant__c p : [
             SELECT User__c, Last_Read_At__c
-            FROM Chat_Participant__c
-            WHERE Chat_Session__c = :sessionId
+            FROM Inner_Chat_Participant__c
+            WHERE Inner_Chat_Session__c = :sessionId
         ]) {
             if (p.User__c != null) lastReadByUser.put(p.User__c, p.Last_Read_At__c);
         }
         Integer totalParticipants = lastReadByUser.size();
 
-        // 최신 메시지부터 가져온 뒤(ORDER BY DESC) 화면에서는 ASC로 바꿔 렌더링
-        List<Chat_Message__c> msgs;
+        // Query newest messages first (ORDER BY DESC) then reverse order to ASC for display
+        List<Inner_Chat_Message__c> msgs;
         if (before == null) {
             msgs = [
                 SELECT Id, Content__c, Sender__c, Sender__r.Name, CreatedDate,
@@ -330,8 +341,8 @@ public with sharing class ChatController {
                        Reply_To__r.Content__c, Reply_To__r.Sender__r.Name,
                        (SELECT ContentDocumentId, ContentDocument.Title, ContentDocument.FileExtension, ContentDocument.LatestPublishedVersionId
                         FROM ContentDocumentLinks LIMIT 1)
-                FROM Chat_Message__c
-                WHERE Chat_Session__c = :sessionId
+                FROM Inner_Chat_Message__c
+                WHERE Inner_Chat_Session__c = :sessionId
                 ORDER BY CreatedDate DESC
                 LIMIT :lim
             ];
@@ -342,8 +353,8 @@ public with sharing class ChatController {
                        Reply_To__r.Content__c, Reply_To__r.Sender__r.Name,
                        (SELECT ContentDocumentId, ContentDocument.Title, ContentDocument.FileExtension, ContentDocument.LatestPublishedVersionId
                         FROM ContentDocumentLinks LIMIT 1)
-                FROM Chat_Message__c
-                WHERE Chat_Session__c = :sessionId
+                FROM Inner_Chat_Message__c
+                WHERE Inner_Chat_Session__c = :sessionId
                   AND CreatedDate < :before
                 ORDER BY CreatedDate DESC
                 LIMIT :lim
@@ -351,9 +362,9 @@ public with sharing class ChatController {
         }
 
         List<MessageWrapper> results = new List<MessageWrapper>();
-        // DESC로 조회했으므로 화면 렌더링을 위해 ASC로 뒤집어서 반환
+        // Since queried DESC, reverse order to ASC for rendering
         for (Integer i = msgs.size() - 1; i >= 0; i--) {
-            Chat_Message__c msg = msgs[i];
+            Inner_Chat_Message__c msg = msgs[i];
             Integer unreadByOthers = 0;
             for (Id uid : lastReadByUser.keySet()) {
                 if (uid == msg.Sender__c) continue;
@@ -367,17 +378,17 @@ public with sharing class ChatController {
         return results;
     }
 
-    // 메시지 전송 및 알림 게시
+    // Send message and publish notification
     @AuraEnabled
     public static void sendMessage(Id sessionId, String content, Id contentDocumentId, Id replyToMessageId, String replyPreview) {
         try {
-            // 1. 메시지 저장
+            // 1. Create message
             String preview = replyPreview;
             if (preview != null && preview.length() > 255) {
                 preview = preview.substring(0, 252) + '...';
             }
-            Chat_Message__c newMsg = new Chat_Message__c(
-                Chat_Session__c = sessionId,
+            Inner_Chat_Message__c newMsg = new Inner_Chat_Message__c(
+                Inner_Chat_Session__c = sessionId,
                 Content__c = content,
                 Sender__c = UserInfo.getUserId(),
                 Reply_To__c = replyToMessageId,
@@ -385,35 +396,35 @@ public with sharing class ChatController {
             );
             insert newMsg;
 
-            // 2. 파일이 첨부된 경우 링크 생성
+            // 2. Link file if attachment provided
             if (contentDocumentId != null) {
                 ContentDocumentLink cdl = new ContentDocumentLink();
                 cdl.ContentDocumentId = contentDocumentId;
                 cdl.LinkedEntityId = newMsg.Id;
-                cdl.ShareType = 'V'; // Viewer 권한
+                cdl.ShareType = 'V'; // Viewer permission
                 insert cdl;
             }
 
-            // 3. 채팅방의 마지막 메시지 시간 갱신 (목록 정렬용)
-            // 주의: Platform Event보다 먼저 갱신해야, 클라이언트가 이벤트를 받고 목록을 새로고침할 때 정렬이 즉시 반영됩니다.
-            update new Chat_Session__c(
+            // 3. Update chat session last message time (for sorting)
+            // Note: Must update before Platform Event publish, so on listener receives event and refreshes list, UI immediately reflects new order
+            update new Inner_Chat_Session__c(
                 Id = sessionId,
                 Last_Message_At__c = System.now()
             );
 
-            // 4. Platform Event 게시 (실시간 알림)
-            // 채팅방 참여자 목록을 함께 보내서(클라이언트에서) 비참여자가 이벤트를 무시할 수 있게 합니다.
-            List<Chat_Participant__c> participants = [
+            // 4. Publish Platform Event (real-time notification)
+            // Send to all participants in session; listener ignores non-participant notifications
+            List<Inner_Chat_Participant__c> participants = [
                 SELECT User__c
-                FROM Chat_Participant__c
-                WHERE Chat_Session__c = :sessionId
+                FROM Inner_Chat_Participant__c
+                WHERE Inner_Chat_Session__c = :sessionId
             ];
             List<String> participantIds = new List<String>();
-            for (Chat_Participant__c p : participants) {
+            for (Inner_Chat_Participant__c p : participants) {
                 if (p.User__c != null) participantIds.add(String.valueOf(p.User__c).substring(0, 15));
             }
 
-            Chat_Notification__e notif = new Chat_Notification__e(
+            Inner_Chat_Notification__e notif = new Inner_Chat_Notification__e(
                 Payload__c = JSON.serialize(new Map<String, Object>{
                     'type' => 'NewMessage',
                     'sessionId' => sessionId,
@@ -428,14 +439,14 @@ public with sharing class ChatController {
             EventBus.publish(notif);
 
         } catch (Exception e) {
-            throw new AuraHandledException('메시지 전송 실패: ' + e.getMessage());
+            throw new AuraHandledException('Message send failed: ' + e.getMessage());
         }
     }
 
-    // 새로운 채팅방 생성 (그룹 또는 1:1)
+    // Create new chat session (group or 1:1)
     @AuraEnabled
     public static Id createChatSession(String name, List<Id> userIds) {
-        // 채팅방 이름 기본값: 이름 미입력 시 참여자 전원의 이름으로 자동 생성
+        // Auto-generate session name from participant names if not provided
         String finalName = name;
         if (String.isBlank(finalName)) {
             Set<Id> uniqueUsers = new Set<Id>(userIds);
@@ -443,32 +454,32 @@ public with sharing class ChatController {
             List<User> users = [SELECT Id, Name FROM User WHERE Id IN :uniqueUsers ORDER BY Name ASC];
             List<String> names = new List<String>();
             for (User u : users) names.add(u.Name);
-            finalName = String.join(names, ', ') + '의 대화';
+            finalName = String.join(names, ', ');
 
-            // Name 필드 길이(일반적으로 80) 초과 방지
+            // Truncate Name field if exceeds max length (typically 80)
             Integer maxLen = 80;
             if (finalName.length() > maxLen) {
                 finalName = finalName.substring(0, maxLen - 3) + '...';
             }
         }
 
-        // 채팅방 생성
-        Chat_Session__c session = new Chat_Session__c(
+        // Create chat session
+        Inner_Chat_Session__c session = new Inner_Chat_Session__c(
             Name = finalName,
             Type__c = (userIds.size() > 1) ? 'Group' : 'Direct'
         );
         insert session;
 
-        // 참여자 추가 (현재 사용자 포함)
-        List<Chat_Participant__c> participants = new List<Chat_Participant__c>();
+        // Add participants (including current user)
+        List<Inner_Chat_Participant__c> participants = new List<Inner_Chat_Participant__c>();
         Set<Id> uniqueUsers = new Set<Id>(userIds);
         uniqueUsers.add(UserInfo.getUserId());
 
         for (Id uid : uniqueUsers) {
-            participants.add(new Chat_Participant__c(
-                Chat_Session__c = session.Id,
+            participants.add(new Inner_Chat_Participant__c(
+                Inner_Chat_Session__c = session.Id,
                 User__c = uid,
-                // 생성자는 생성 직후 이미 읽은 것으로 처리
+                // Mark as read from creation for current user only
                 Last_Read_At__c = (uid == UserInfo.getUserId()) ? System.now() : null
             ));
         }
@@ -477,40 +488,40 @@ public with sharing class ChatController {
         return session.Id;
     }
 
-    // 채팅방 생성(또는 기존 Direct 채팅방 반환)
-    // - 상대와 1:1(Direct) 채팅방이 이미 존재하면 새로 만들지 않고 그 방으로 이동합니다.
+    // Create or get existing Direct chat session
+    // - For 1:1 sessions, if existing Direct session already exists, returns that instead of creating new
     @AuraEnabled
     public static CreateOrGetChatResult createOrGetChatSession(String name, List<Id> userIds) {
         CreateOrGetChatResult res = new CreateOrGetChatResult();
         res.existed = false;
 
         if (userIds == null || userIds.isEmpty()) {
-            // 방 생성 자체가 불가한 입력
-            throw new AuraHandledException('대화 상대를 선택해주세요.');
+            // No creation possible without participant selection
+            throw new AuraHandledException('Please select participants.');
         }
 
         Id me = UserInfo.getUserId();
 
-        // 1:1 생성 시에만 "기존 채팅방"을 탐색
+        // Before creating 1:1 session, search for existing one
         if (userIds.size() == 1) {
             Id other = userIds[0];
             if (other != null && other != me) {
                 Set<Id> pair = new Set<Id>{ me, other };
 
-                // 두 사람만 참여 중인 Direct 채팅방이 있는지 확인
+                // Check if Direct chat session already exists with both users
                 // - Type__c = 'Direct'
-                // - 참여자 수 = 2
+                // - Participants = 2
                 List<AggregateResult> ars = [
-                    SELECT Chat_Session__c sessionId,
-                           MAX(Chat_Session__r.LastModifiedDate) lastMod,
+                    SELECT Inner_Chat_Session__c sessionId,
+                           MAX(Inner_Chat_Session__r.LastModifiedDate) lastMod,
                            COUNT(Id) cnt,
                            COUNT_DISTINCT(User__c) userCnt
-                    FROM Chat_Participant__c
+                    FROM Inner_Chat_Participant__c
                     WHERE User__c IN :pair
-                      AND Chat_Session__r.Type__c = 'Direct'
-                    GROUP BY Chat_Session__c
+                      AND Inner_Chat_Session__r.Type__c = 'Direct'
+                    GROUP BY Inner_Chat_Session__c
                     HAVING COUNT(Id) = 2 AND COUNT_DISTINCT(User__c) = 2
-                    ORDER BY MAX(Chat_Session__r.LastModifiedDate) DESC
+                    ORDER BY MAX(Inner_Chat_Session__r.LastModifiedDate) DESC
                     LIMIT 1
                 ];
 
@@ -522,50 +533,50 @@ public with sharing class ChatController {
             }
         }
 
-        // 기존 방이 없으면 새로 생성
+        // No existing session found, create new one
         res.sessionId = createChatSession(name, userIds);
         res.existed = false;
         return res;
     }
 
-    // 채팅방 이름 변경 (참여자만 가능)
+    // Rename chat session (participants only)
     @AuraEnabled
     public static void renameChatSession(Id sessionId, String newName) {
         if (sessionId == null) return;
         if (String.isBlank(newName)) {
-            throw new AuraHandledException('채팅방 이름을 입력해주세요.');
+            throw new AuraHandledException('Please enter chat session name.');
         }
 
         Id me = UserInfo.getUserId();
         Integer mine = [
             SELECT COUNT()
-            FROM Chat_Participant__c
-            WHERE Chat_Session__c = :sessionId
+            FROM Inner_Chat_Participant__c
+            WHERE Inner_Chat_Session__c = :sessionId
               AND User__c = :me
         ];
         if (mine == 0) {
-            throw new AuraHandledException('참여자가 아닌 사용자는 채팅방 이름을 변경할 수 없습니다.');
+            throw new AuraHandledException('Non-participant users cannot rename chat session.');
         }
 
         try {
-            update new Chat_Session__c(
+            update new Inner_Chat_Session__c(
                 Id = sessionId,
                 Name = newName
             );
 
-            // 참여자 목록(전체) 조회 → Platform Event에 포함(비참여자 수신 방지)
-            List<Chat_Participant__c> parts = [
+            // Get all participants for notification (non-participants ignore event)
+            List<Inner_Chat_Participant__c> parts = [
                 SELECT User__c
-                FROM Chat_Participant__c
-                WHERE Chat_Session__c = :sessionId
+                FROM Inner_Chat_Participant__c
+                WHERE Inner_Chat_Session__c = :sessionId
             ];
             List<String> participantIds = new List<String>();
-            for (Chat_Participant__c p : parts) {
+            for (Inner_Chat_Participant__c p : parts) {
                 if (p.User__c != null) participantIds.add(String.valueOf(p.User__c).substring(0, 15));
             }
 
-            // 채팅방 이름 변경 이벤트 발행(상대방 화면 즉시 갱신용)
-            Chat_Notification__e notif = new Chat_Notification__e(
+            // Publish session renamed event (immediate UI refresh)
+            Inner_Chat_Notification__e notif = new Inner_Chat_Notification__e(
                 Payload__c = JSON.serialize(new Map<String, Object>{
                     'type' => 'SessionRenamed',
                     'sessionId' => sessionId,
@@ -576,63 +587,63 @@ public with sharing class ChatController {
             );
             EventBus.publish(notif);
         } catch (Exception e) {
-            throw new AuraHandledException('채팅방 이름 변경 실패: ' + e.getMessage());
+            throw new AuraHandledException('Rename failed: ' + e.getMessage());
         }
     }
 
-    // 채팅방 나가기 (현재 사용자만 참여자에서 제거)
+    // Leave chat session (current user only removed from participants)
     @AuraEnabled
     public static void leaveChatSession(Id sessionId) {
         if (sessionId == null) return;
         Id me = UserInfo.getUserId();
 
         try {
-            // 참여자 삭제
-            List<Chat_Participant__c> mine = [
+            // Remove current user from participants
+            List<Inner_Chat_Participant__c> mine = [
                 SELECT Id
-                FROM Chat_Participant__c
-                WHERE Chat_Session__c = :sessionId
+                FROM Inner_Chat_Participant__c
+                WHERE Inner_Chat_Session__c = :sessionId
                   AND User__c = :me
             ];
             if (!mine.isEmpty()) {
                 delete mine;
             }
 
-            // 남은 참여자 조회
-            List<Chat_Participant__c> remainParts = [
+            // Check remaining participants
+            List<Inner_Chat_Participant__c> remainParts = [
                 SELECT User__c
-                FROM Chat_Participant__c
-                WHERE Chat_Session__c = :sessionId
+                FROM Inner_Chat_Participant__c
+                WHERE Inner_Chat_Session__c = :sessionId
             ];
 
-            // 남은 참여자가 없으면 세션/메시지도 정리
+            // If no remaining participants, delete session and messages
             if (remainParts.isEmpty()) {
-                List<Chat_Message__c> msgs = [
+                List<Inner_Chat_Message__c> msgs = [
                     SELECT Id
-                    FROM Chat_Message__c
-                    WHERE Chat_Session__c = :sessionId
+                    FROM Inner_Chat_Message__c
+                    WHERE Inner_Chat_Session__c = :sessionId
                 ];
                 if (!msgs.isEmpty()) delete msgs;
 
-                delete new Chat_Session__c(Id = sessionId);
+                delete new Inner_Chat_Session__c(Id = sessionId);
                 return;
             }
 
-            // 시스템 메시지 생성 (남은 참여자에게만 보이도록 저장)
-            Chat_Message__c systemMsg = new Chat_Message__c(
-                Chat_Session__c = sessionId,
-                Content__c = '[SYSTEM] ' + UserInfo.getName() + '님이 채팅방을 나갔습니다.',
+            // Create system message (visible to remaining participants only)
+            Inner_Chat_Message__c systemMsg = new Inner_Chat_Message__c(
+                Inner_Chat_Session__c = sessionId,
+                Content__c = '[SYSTEM] ' + UserInfo.getName() + ' left the chat.',
                 Sender__c = me
             );
             insert systemMsg;
 
-            // Platform Event 게시 (남은 참여자만 수신하도록 participantIds 포함)
+            // Publish event (remaining participants only notified)
             List<String> participantIds = new List<String>();
-            for (Chat_Participant__c p : remainParts) {
+            for (Inner_Chat_Participant__c p : remainParts) {
                 if (p.User__c != null) participantIds.add(String.valueOf(p.User__c).substring(0, 15));
             }
 
-            Chat_Notification__e notif = new Chat_Notification__e(
+            Inner_Chat_Notification__e notif = new Inner_Chat_Notification__e(
                 Payload__c = JSON.serialize(new Map<String, Object>{
                     'type' => 'System',
                     'sessionId' => sessionId,
@@ -644,47 +655,47 @@ public with sharing class ChatController {
                     'participantIds' => participantIds
                 })
             );
-            // 목록 정렬/갱신을 위해 마지막 메시지 시간 갱신 → 그 다음 이벤트 발행
-            update new Chat_Session__c(
+            // Update last message time for sorting/refresh
+            update new Inner_Chat_Session__c(
                 Id = sessionId,
                 Last_Message_At__c = System.now()
             );
             EventBus.publish(notif);
         } catch (Exception e) {
-            throw new AuraHandledException('채팅방 나가기 실패: ' + e.getMessage());
+            throw new AuraHandledException('Leave failed: ' + e.getMessage());
         }
     }
 
-    // 채팅방 삭제 (작성자만 가능): 메시지/참여자까지 함께 삭제
+    // Delete chat session (creator only; deletes messages and participants too)
     @AuraEnabled
     public static void deleteChatSession(Id sessionId) {
         if (sessionId == null) return;
         Id me = UserInfo.getUserId();
 
         try {
-            Chat_Session__c session = [
+            Inner_Chat_Session__c session = [
                 SELECT Id, CreatedById
-                FROM Chat_Session__c
+                FROM Inner_Chat_Session__c
                 WHERE Id = :sessionId
                 LIMIT 1
             ];
 
-            // 기본 정책: 생성자만 삭제 가능
+            // Security: Only creator can delete
             if (session.CreatedById != me) {
-                throw new AuraHandledException('채팅방 삭제 권한이 없습니다. (생성자만 삭제 가능)');
+                throw new AuraHandledException('Only creator can delete chat session.');
             }
 
-            List<Chat_Message__c> msgs = [
+            List<Inner_Chat_Message__c> msgs = [
                 SELECT Id
-                FROM Chat_Message__c
-                WHERE Chat_Session__c = :sessionId
+                FROM Inner_Chat_Message__c
+                WHERE Inner_Chat_Session__c = :sessionId
             ];
             if (!msgs.isEmpty()) delete msgs;
 
-            List<Chat_Participant__c> parts = [
+            List<Inner_Chat_Participant__c> parts = [
                 SELECT Id
-                FROM Chat_Participant__c
-                WHERE Chat_Session__c = :sessionId
+                FROM Inner_Chat_Participant__c
+                WHERE Inner_Chat_Session__c = :sessionId
             ];
             if (!parts.isEmpty()) delete parts;
 
@@ -692,11 +703,11 @@ public with sharing class ChatController {
         } catch (AuraHandledException ahe) {
             throw ahe;
         } catch (Exception e) {
-            throw new AuraHandledException('채팅방 삭제 실패: ' + e.getMessage());
+            throw new AuraHandledException('Delete failed: ' + e.getMessage());
         }
     }
 
-    // 채팅방에 참여자 초대 (기존 참여자만 호출 가능)
+    // Invite participants to chat session (only existing participants can invite)
     @AuraEnabled
     public static void inviteParticipants(Id sessionId, List<Id> userIds) {
         if (sessionId == null) return;
@@ -705,56 +716,56 @@ public with sharing class ChatController {
         Id me = UserInfo.getUserId();
 
         try {
-            // 호출자가 해당 채팅방 참여자인지 확인
+            // Verify inviter is participant in chat session
             Integer mine = [
                 SELECT COUNT()
-                FROM Chat_Participant__c
-                WHERE Chat_Session__c = :sessionId
+                FROM Inner_Chat_Participant__c
+                WHERE Inner_Chat_Session__c = :sessionId
                   AND User__c = :me
             ];
             if (mine == 0) {
-                throw new AuraHandledException('참여자가 아닌 사용자는 초대할 수 없습니다.');
+                throw new AuraHandledException('Non-participants cannot invite.');
             }
 
-            // 기존 참여자 조회
-            List<Chat_Participant__c> existing = [
+            // Get existing participants
+            List<Inner_Chat_Participant__c> existing = [
                 SELECT User__c
-                FROM Chat_Participant__c
-                WHERE Chat_Session__c = :sessionId
+                FROM Inner_Chat_Participant__c
+                WHERE Inner_Chat_Session__c = :sessionId
             ];
             Set<Id> existingUsers = new Set<Id>();
-            for (Chat_Participant__c p : existing) {
+            for (Inner_Chat_Participant__c p : existing) {
                 if (p.User__c != null) existingUsers.add(p.User__c);
             }
 
-            // 초대 대상(중복 제거, 자기 자신 제외)
+            // Remove duplicates and self from invite list
             Set<Id> targets = new Set<Id>(userIds);
             targets.remove(me);
             targets.removeAll(existingUsers);
             if (targets.isEmpty()) return;
 
-            // 참여자 추가
-            List<Chat_Participant__c> toInsert = new List<Chat_Participant__c>();
+            // Add new participants
+            List<Inner_Chat_Participant__c> toInsert = new List<Inner_Chat_Participant__c>();
             for (Id uid : targets) {
-                toInsert.add(new Chat_Participant__c(
-                    Chat_Session__c = sessionId,
+                toInsert.add(new Inner_Chat_Participant__c(
+                    Inner_Chat_Session__c = sessionId,
                     User__c = uid
                 ));
             }
             insert toInsert;
 
-            // 추가 후 참여자 목록(전체) 재조회
-            List<Chat_Participant__c> allParts = [
+            // Get all participants for notification
+            List<Inner_Chat_Participant__c> allParts = [
                 SELECT User__c
-                FROM Chat_Participant__c
-                WHERE Chat_Session__c = :sessionId
+                FROM Inner_Chat_Participant__c
+                WHERE Inner_Chat_Session__c = :sessionId
             ];
             List<String> participantIds = new List<String>();
-            for (Chat_Participant__c p : allParts) {
+            for (Inner_Chat_Participant__c p : allParts) {
                 if (p.User__c != null) participantIds.add(String.valueOf(p.User__c).substring(0, 15));
             }
 
-            // 초대된 사용자 이름 조회(시스템 메시지용)
+            // Get invited user names (for system message)
             Map<Id, User> invitedUsers = new Map<Id, User>([
                 SELECT Id, Name
                 FROM User
@@ -762,31 +773,31 @@ public with sharing class ChatController {
             ]);
             List<String> invitedNames = new List<String>();
             for (Id uid : targets) {
-                if (invitedUsers.containsKey(uid)) invitedNames.add(invitedUsers.get(uid).Name + '님');
+                if (invitedUsers.containsKey(uid)) invitedNames.add(invitedUsers.get(uid).Name);
             }
-            // "두 줄 시스템 문구"를 유지하기 위해 너무 긴 초대 대상은 요약 표기합니다.
-            // - 1명: "B님"
-            // - N명: "B님 외 (N-1)명"
+            // Format system message to keep it concise
+            // - 1 user: "B"
+            // - N users: "B (and N-1 more)"
             String namesText = '';
             if (!invitedNames.isEmpty()) {
                 if (invitedNames.size() == 1) {
                     namesText = invitedNames[0];
                 } else {
-                    namesText = invitedNames[0] + ' 외 ' + String.valueOf(invitedNames.size() - 1) + '명';
+                    namesText = invitedNames[0] + ' (and ' + String.valueOf(invitedNames.size() - 1) + ' more)';
                 }
             }
 
-            // 시스템 메시지 저장
-            // 예: "A님이 B님을 초대했습니다." / "A님이 B님 외 2명을 초대했습니다."
-            Chat_Message__c systemMsg = new Chat_Message__c(
-                Chat_Session__c = sessionId,
-                Content__c = '[SYSTEM] ' + UserInfo.getName() + '님이 ' + namesText + '을 초대했습니다.',
+            // Create system message
+            // Example: "A invited B." / "A invited B (and 2 more)."
+            Inner_Chat_Message__c systemMsg = new Inner_Chat_Message__c(
+                Inner_Chat_Session__c = sessionId,
+                Content__c = '[SYSTEM] ' + UserInfo.getName() + ' invited ' + namesText + '.',
                 Sender__c = me
             );
             insert systemMsg;
 
-            // Platform Event 게시 (신규 초대자도 participantIds에 포함되므로 수신 가능)
-            Chat_Notification__e notif = new Chat_Notification__e(
+            // Publish event (new invitees also see notification via participantIds)
+            Inner_Chat_Notification__e notif = new Inner_Chat_Notification__e(
                 Payload__c = JSON.serialize(new Map<String, Object>{
                     'type' => 'System',
                     'sessionId' => sessionId,
@@ -798,25 +809,25 @@ public with sharing class ChatController {
                     'participantIds' => participantIds
                 })
             );
-            // 목록 정렬/갱신을 위해 수정 시간 갱신 + 인원이 늘면 Group으로 전환
+            // Update last message time for sorting + change type to Group if count > 2
             Integer countParts = allParts.size();
-            Chat_Session__c toUpdate = new Chat_Session__c(Id = sessionId);
+            Inner_Chat_Session__c toUpdate = new Inner_Chat_Session__c(Id = sessionId);
             if (countParts > 2) {
                 toUpdate.Type__c = 'Group';
             }
             toUpdate.Last_Message_At__c = System.now();
             update toUpdate;
 
-            // 정렬 값이 반영된 뒤 이벤트를 발행해야, 수신자가 리스트를 새로고침했을 때 바로 위로 올라옵니다.
+            // Publish event after update so UI refresh picks up new state
             EventBus.publish(notif);
         } catch (AuraHandledException ahe) {
             throw ahe;
         } catch (Exception e) {
-            throw new AuraHandledException('참여자 초대 실패: ' + e.getMessage());
+            throw new AuraHandledException('Invite failed: ' + e.getMessage());
         }
     }
 
-    // 사용자 검색 (채팅방 초대용)
+    // Search users (for chat participant selection)
     @AuraEnabled(cacheable=true)
     public static List<User> searchUsers(String searchTerm) {
         String key = '%' + searchTerm + '%';
@@ -825,11 +836,17 @@ public with sharing class ChatController {
 
     // --- Wrapper Classes ---
 
+    /**
+     * Result wrapper for createOrGetChatSession operation
+     */
     public class CreateOrGetChatResult {
         @AuraEnabled public Id sessionId;
         @AuraEnabled public Boolean existed;
     }
 
+    /**
+     * Wrapper for chat session display
+     */
     public class ChatSessionWrapper {
         @AuraEnabled public Id sessionId;
         @AuraEnabled public String name;
@@ -842,11 +859,11 @@ public with sharing class ChatController {
         @AuraEnabled public Boolean isMuted;
         @AuraEnabled public String lastMessagePreview;
 
-        public ChatSessionWrapper(Chat_Session__c s) {
+        public ChatSessionWrapper(Inner_Chat_Session__c s) {
             this(s, 0, s.LastModifiedDate, false, false, null);
         }
 
-        public ChatSessionWrapper(Chat_Session__c s, Integer unreadCount, DateTime lastMessageAt, Boolean isPinned, Boolean isMuted, String lastMessagePreview) {
+        public ChatSessionWrapper(Inner_Chat_Session__c s, Integer unreadCount, DateTime lastMessageAt, Boolean isPinned, Boolean isMuted, String lastMessagePreview) {
             this.sessionId = s.Id;
             this.name = s.Name;
             this.type = s.Type__c;
@@ -860,6 +877,9 @@ public with sharing class ChatController {
         }
     }
 
+    /**
+     * Wrapper for chat message display
+     */
     public class MessageWrapper {
         @AuraEnabled public Id id;
         @AuraEnabled public String content;
@@ -875,15 +895,15 @@ public with sharing class ChatController {
         @AuraEnabled public String replyToSenderName;
         @AuraEnabled public String replyToPreview;
 
-        public MessageWrapper(Chat_Message__c m) {
+        public MessageWrapper(Inner_Chat_Message__c m) {
             this(m, 0);
         }
 
-        public MessageWrapper(Chat_Message__c m, Integer unreadByOthers) {
+        public MessageWrapper(Inner_Chat_Message__c m, Integer unreadByOthers) {
             this(m, unreadByOthers, 0, 0);
         }
 
-        public MessageWrapper(Chat_Message__c m, Integer unreadByOthers, Integer readByOthers, Integer otherParticipantCount) {
+        public MessageWrapper(Inner_Chat_Message__c m, Integer unreadByOthers, Integer readByOthers, Integer otherParticipantCount) {
             this.id = m.Id;
             this.content = m.Content__c;
             this.senderId = m.Sender__c;
@@ -894,13 +914,13 @@ public with sharing class ChatController {
             this.readByOthers = (readByOthers == null) ? 0 : readByOthers;
             this.otherParticipantCount = (otherParticipantCount == null) ? 0 : otherParticipantCount;
 
-            // 답장(Reply) 정보
+            // Reply information
             this.replyToId = m.Reply_To__c;
             if (m.Reply_To__c != null) {
                 this.replyToSenderName = (m.Reply_To__r != null && m.Reply_To__r.Sender__r != null)
                     ? m.Reply_To__r.Sender__r.Name
                     : null;
-                // Reply_Preview__c가 있으면 그걸 우선 사용, 없으면 원본 메시지 내용 fallback
+                // Use Reply_Preview__c if available, otherwise use original message content as fallback
                 this.replyToPreview = (m.Reply_Preview__c != null)
                     ? m.Reply_Preview__c
                     : ((m.Reply_To__r != null) ? m.Reply_To__r.Content__c : null);
@@ -912,6 +932,9 @@ public with sharing class ChatController {
         }
     }
 
+    /**
+     * Wrapper for message attachment information
+     */
     public class AttachmentWrapper {
         @AuraEnabled public Id docId;
         @AuraEnabled public String title;
@@ -926,6 +949,9 @@ public with sharing class ChatController {
         }
     }
 
+    /**
+     * Wrapper for chat participant display
+     */
     public class ChatParticipantWrapper {
         @AuraEnabled public Id participantId;
         @AuraEnabled public Id userId;
@@ -935,10 +961,10 @@ public with sharing class ChatController {
         @AuraEnabled public Boolean isMuted;
         @AuraEnabled public Boolean isMe;
 
-        public ChatParticipantWrapper(Chat_Participant__c p) {
+        public ChatParticipantWrapper(Inner_Chat_Participant__c p) {
             this.participantId = p.Id;
             this.userId = p.User__c;
-            this.userName = (p.User__r != null) ? p.User__r.Name : '(알 수 없음)';
+            this.userName = (p.User__r != null) ? p.User__r.Name : '(Unknown)';
             this.lastReadAt = p.Last_Read_At__c;
             this.isPinned = (p.Is_Pinned__c == true);
             this.isMuted = (p.Is_Muted__c == true);
