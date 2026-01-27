@@ -17,14 +17,18 @@
         <members>LeaveRequestTriggerHandler</members>
         <members>LeaveRequestTriggerHandler_Test</members>
         <members>LeaveBalanceController</members>
+        <members>LeaveBalanceController_Test</members>
         <name>ApexClass</name>
     </types>
     
     <!-- Break functionality -->
     <types>
         <members>BreakRequestController</members>
+        <members>BreakRequestController_Test</members>
         <members>BreakService</members>
+        <members>BreakService_Test</members>
         <members>BreakRequestTriggerHandler</members>
+        <members>BreakRequestTriggerHandler_Test</members>
         <name>ApexClass</name>
     </types>
     
@@ -39,7 +43,9 @@
     <!-- Manager/Admin functionality -->
     <types>
         <members>ManagerDashboardController</members>
+        <members>ManagerDashboardController_Test</members>
         <members>OmniPresenceHelper</members>
+        <members>OmniPresenceHelper_Test</members>
         <name>ApexClass</name>
     </types>
 
