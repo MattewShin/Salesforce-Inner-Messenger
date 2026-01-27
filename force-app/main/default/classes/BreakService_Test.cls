@@ -135,12 +135,12 @@ private class BreakService_Test {
      */
     @IsTest
     static void test_validateTimeRange_morningBreak_valid() {
-        Time start = Time.newInstance(9, 0, 0, 0);
-        Time end = Time.newInstance(9, 10, 0, 0);
+        Time startTime = Time.newInstance(9, 0, 0, 0);
+        Time endTime = Time.newInstance(9, 10, 0, 0);
         
         Test.startTest();
         try {
-            BreakService.validateTimeRange(BreakService.TYPE_MORNING_BREAK, start, end);
+            BreakService.validateTimeRange(BreakService.TYPE_MORNING_BREAK, startTime, endTime);
         } catch (Exception e) {
             System.assert(false, 'Should not throw exception for valid morning break time');
         }

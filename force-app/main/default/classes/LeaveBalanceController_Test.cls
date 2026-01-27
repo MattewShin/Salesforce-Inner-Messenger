@@ -115,7 +115,7 @@ private class LeaveBalanceController_Test {
      * Test: Get available balance with valid year
      */
     @IsTest
-    static void test_getAvailableBalance_shouldReturnBalance_withValidYear() {
+    static void test_getMyBalance_shouldReturnBalance_withValidYear() {
         Id me = UserInfo.getUserId();
         Integer currentYear = System.today().year();
         
@@ -127,24 +127,26 @@ private class LeaveBalanceController_Test {
         insert ent;
         
         Test.startTest();
-        Decimal result = LeaveBalanceController.getAvailableBalance(currentYear);
+        LeaveBalanceController.LeaveBalanceDTO result = LeaveBalanceController.getMyBalance(currentYear);
         Test.stopTest();
         
-        System.assertEquals(15, result, 'Should return available balance');
+        System.assertNotEquals(null, result, 'Should return balance');
+        System.assertEquals(15, result.totalDays, 'Total days should be 15');
     }
 
     /**
-     * Test: Get available balance with no entitlements
+     * Test: Get balance with no entitlements
      */
     @IsTest
-    static void test_getAvailableBalance_shouldReturnZero_whenNoEntitlements() {
+    static void test_getMyBalance_shouldReturnZero_whenNoEntitlements() {
         Integer currentYear = System.today().year();
         
         Test.startTest();
-        Decimal result = LeaveBalanceController.getAvailableBalance(currentYear);
+        LeaveBalanceController.LeaveBalanceDTO result = LeaveBalanceController.getMyBalance(currentYear);
         Test.stopTest();
         
-        System.assertEquals(0, result, 'Should return 0 when no entitlements');
+        System.assertNotEquals(null, result, 'Should return DTO');
+        System.assertEquals(0, result.totalDays, 'Total days should be 0 when no entitlements');
     }
 
     /**
