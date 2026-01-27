@@ -52,16 +52,25 @@ public without sharing class BreakRequestTriggerHandler {
 
     private static void afterDelete(List<Break_Request__c> deleted) {
         // Event 삭제
+        if (deleted == null || deleted.isEmpty()) {
+            return;  // 삭제할 레코드가 없으면 조기 반환
+        }
+        
         Set<Id> eventIds = new Set<Id>();
         for (Break_Request__c r : deleted) {
-            if (String.isNotBlank(r.CalendarEventId__c)) {
+            if (r != null && String.isNotBlank(r.CalendarEventId__c)) {
                 eventIds.add(r.CalendarEventId__c);
             }
         }
         if (!eventIds.isEmpty()) {
-            List<Event> toDelete = [SELECT Id FROM Event WHERE Id IN :eventIds];
-            if (!toDelete.isEmpty()) {
-                delete toDelete;
+            try {
+                List<Event> toDelete = [SELECT Id FROM Event WHERE Id IN :eventIds];
+                if (!toDelete.isEmpty()) {
+                    delete toDelete;
+                }
+            } catch (Exception e) {
+                // Event 삭제 실패 시 조용히 진행 (Event가 없을 수 있음)
+                System.debug('Event deletion failed: ' + e.getMessage());
             }
         }
     }

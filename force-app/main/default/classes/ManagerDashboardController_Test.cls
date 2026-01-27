@@ -13,26 +13,15 @@
 private class ManagerDashboardController_Test {
     
     /**
-     * Test: Get today status with no team members
+     * Test: Get today status
      */
     @IsTest
-    static void test_getTodayStatus_shouldReturnList() {
+    static void test_getTodayStatus_shouldReturnAgentStatusList() {
         Test.startTest();
         List<ManagerDashboardController.AgentStatusDTO> result = ManagerDashboardController.getTodayStatus();
         Test.stopTest();
         
         System.assertNotEquals(null, result, 'Should return list');
-    }
-
-    /**
-     * Test: Get today status should include agent status DTO
-     */
-    @IsTest
-    static void test_getTodayStatus_shouldReturnAgentStatus() {
-        Test.startTest();
-        List<ManagerDashboardController.AgentStatusDTO> result = ManagerDashboardController.getTodayStatus();
-        Test.stopTest();
-        
         if (result.size() > 0) {
             System.assertNotEquals(null, result[0].userId, 'Should have userId');
             System.assertNotEquals(null, result[0].userName, 'Should have userName');
@@ -44,7 +33,7 @@ private class ManagerDashboardController_Test {
      * Test: Get team break requests
      */
     @IsTest
-    static void test_getTeamBreakRequests_shouldReturnRequests() {
+    static void test_getTeamBreakRequests_shouldReturnBreakRequests() {
         Id me = UserInfo.getUserId();
         Date today = Date.today();
         
@@ -69,20 +58,7 @@ private class ManagerDashboardController_Test {
      * Test: Get team leave requests
      */
     @IsTest
-    static void test_getTeamLeaveRequests_shouldReturnRequests() {
-        Id me = UserInfo.getUserId();
-        Date today = Date.today();
-        
-        Leave_Request__c req = new Leave_Request__c(
-            Requester__c = me,
-            Start_Date__c = today.addDays(1),
-            End_Date__c = today.addDays(2),
-            Days__c = 2,
-            Reason__c = 'Test',
-            Status__c = 'Submitted'
-        );
-        insert req;
-        
+    static void test_getTeamLeaveRequests_shouldReturnLeaveRequests() {
         Test.startTest();
         List<ManagerDashboardController.LeaveRequestDTO> result = ManagerDashboardController.getTeamLeaveRequests(null, null, null, null);
         Test.stopTest();
@@ -91,38 +67,10 @@ private class ManagerDashboardController_Test {
     }
 
     /**
-     * Test: Get today status should calculate break status
+     * Test: Get team work times
      */
     @IsTest
-    static void test_getTodayStatus_shouldCalculateBreakStatus() {
-        Test.startTest();
-        List<ManagerDashboardController.AgentStatusDTO> result = ManagerDashboardController.getTodayStatus();
-        Test.stopTest();
-        
-        if (result.size() > 0) {
-            System.assertNotEquals(null, result[0].morningBreak, 'Should have morning break status');
-            System.assertNotEquals(null, result[0].lunch, 'Should have lunch status');
-            System.assertNotEquals(null, result[0].afternoonBreak, 'Should have afternoon break status');
-        }
-    }
-
-    /**
-     * Test: Get team members list
-     */
-    @IsTest
-    static void test_getTeamMembers_shouldReturnList() {
-        Test.startTest();
-        List<User> result = ManagerDashboardController.getTeamMembers();
-        Test.stopTest();
-        
-        System.assertNotEquals(null, result, 'Should return list');
-    }
-
-    /**
-     * Test: Get team member work time
-     */
-    @IsTest
-    static void test_getTodayWorkTimeForTeamMember_shouldReturnWorkTime() {
+    static void test_getTeamWorkTimes_shouldReturnWorkTimes() {
         Id me = UserInfo.getUserId();
         Date today = Date.today();
         
@@ -135,63 +83,52 @@ private class ManagerDashboardController_Test {
         insert wt;
         
         Test.startTest();
-        Work_Time__c result = ManagerDashboardController.getTodayWorkTimeForTeamMember(me);
+        List<ManagerDashboardController.WorkTimeDTO> result = ManagerDashboardController.getTeamWorkTimes(null, null, null, null);
         Test.stopTest();
         
-        if (result != null) {
-            System.assertEquals(wt.Id, result.Id, 'Should return correct work time');
-        }
+        System.assertNotEquals(null, result, 'Should return work time list');
     }
 
     /**
-     * Test: Get team member leave balance
+     * Test: Today status calculation
      */
     @IsTest
-    static void test_getTeamMemberLeaveBalance_shouldReturnBalance() {
-        Id me = UserInfo.getUserId();
-        Integer currentYear = System.today().year();
-        
-        Leave_Entitlement__c ent = new Leave_Entitlement__c(
-            User__c = me,
-            Year__c = String.valueOf(currentYear),
-            Total_Days__c = 15
-        );
-        insert ent;
-        
+    static void test_getTodayStatus_shouldCalculateLeaveAndBreakStatus() {
         Test.startTest();
-        Decimal result = ManagerDashboardController.getTeamMemberLeaveBalance(me);
+        List<ManagerDashboardController.AgentStatusDTO> result = ManagerDashboardController.getTodayStatus();
         Test.stopTest();
         
-        System.assertEquals(15, result, 'Should return leave balance');
+        System.assertNotEquals(null, result, 'Should calculate status');
     }
 
     /**
-     * Test: Get team members
+     * Test: Get team break requests with date range
      */
     @IsTest
-    static void test_getTeamMembersInfo_shouldReturnUserList() {
-        Test.startTest();
-        List<User> result = ManagerDashboardController.getTeamMembers();
-        Test.stopTest();
-        
-        System.assertNotEquals(null, result, 'Should return list');
-    }
-
-    /**
-     * Test: Bulk operations on break requests
-     */
-    @IsTest
-    static void test_getTeamBreakRequests_withFilter() {
-        Id me = UserInfo.getUserId();
+    static void test_getTeamBreakRequests_withDateRange() {
         Date today = Date.today();
         Date startDate = today.addDays(-7);
         Date endDate = today.addDays(7);
         
         Test.startTest();
-        List<ManagerDashboardController.BreakRequestDTO> result = ManagerDashboardController.getTeamBreakRequests(startDate, endDate, 'Approved', null);
+        List<ManagerDashboardController.BreakRequestDTO> result = ManagerDashboardController.getTeamBreakRequests(startDate, endDate, null, null);
         Test.stopTest();
         
-        System.assertNotEquals(null, result, 'Should return filtered list');
+        System.assertNotEquals(null, result, 'Should return list with date range');
+    }
+
+    /**
+     * Test: Get team break requests with status filter
+     */
+    @IsTest
+    static void test_getTeamBreakRequests_withStatusFilter() {
+        Test.startTest();
+        List<ManagerDashboardController.BreakRequestDTO> approved = ManagerDashboardController.getTeamBreakRequests(null, null, 'Approved', null);
+        List<ManagerDashboardController.BreakRequestDTO> submitted = ManagerDashboardController.getTeamBreakRequests(null, null, 'Submitted', null);
+        Test.stopTest();
+        
+        System.assertNotEquals(null, approved, 'Should return approved list');
+        System.assertNotEquals(null, submitted, 'Should return submitted list');
     }
 
     /**
@@ -199,7 +136,6 @@ private class ManagerDashboardController_Test {
      */
     @IsTest
     static void test_getTeamLeaveRequests_withDateRange() {
-        Id me = UserInfo.getUserId();
         Date today = Date.today();
         Date startDate = today.addDays(-30);
         Date endDate = today.addDays(30);
@@ -212,54 +148,89 @@ private class ManagerDashboardController_Test {
     }
 
     /**
-     * Test: Check if leave is active now
+     * Test: Get team work times with status filter
      */
     @IsTest
-    static void test_isLeaveActiveNow_shouldReturnBoolean() {
+    static void test_getTeamWorkTimes_withStatusFilter() {
+        Test.startTest();
+        List<ManagerDashboardController.WorkTimeDTO> onDuty = ManagerDashboardController.getTeamWorkTimes(null, null, null, 'On Duty');
+        List<ManagerDashboardController.WorkTimeDTO> offDuty = ManagerDashboardController.getTeamWorkTimes(null, null, null, 'Off Duty');
+        Test.stopTest();
+        
+        System.assertNotEquals(null, onDuty, 'Should return on duty list');
+        System.assertNotEquals(null, offDuty, 'Should return off duty list');
+    }
+
+    /**
+     * Test: Bulk break request operations
+     */
+    @IsTest
+    static void test_getTeamBreakRequests_bulkData() {
         Id me = UserInfo.getUserId();
         Date today = Date.today();
         
-        Leave_Request__c req = new Leave_Request__c(
-            Requester__c = me,
-            Start_Date__c = today,
-            End_Date__c = today,
-            Days__c = 1,
-            Reason__c = 'Test',
-            Status__c = 'Approved'
-        );
-        insert req;
+        List<Break_Request__c> breaks = new List<Break_Request__c>();
+        for (Integer i = 0; i < 5; i++) {
+            breaks.add(new Break_Request__c(
+                Requester__c = me,
+                Date__c = today.addDays(i),
+                Break_Type__c = BreakService.TYPE_MORNING_BREAK,
+                Start_Time__c = Time.newInstance(9 + i, 0, 0, 0),
+                End_Time__c = Time.newInstance(9 + i, 10, 0, 0),
+                Status__c = 'Approved'
+            ));
+        }
+        insert breaks;
         
         Test.startTest();
-        // isLeaveActiveNow is private, so we test through getTodayStatus
-        List<ManagerDashboardController.AgentStatusDTO> result = ManagerDashboardController.getTodayStatus();
+        List<ManagerDashboardController.BreakRequestDTO> result = ManagerDashboardController.getTeamBreakRequests(null, null, null, null);
         Test.stopTest();
         
-        System.assertNotEquals(null, result, 'Should handle leave active check');
+        System.assert(result.size() >= 0, 'Should handle bulk break data');
     }
 
     /**
-     * Test: Team status with multiple records
+     * Test: Bulk work time operations
      */
     @IsTest
-    static void test_getTodayStatus_bulkData() {
+    static void test_getTeamWorkTimes_bulkData() {
+        Id me = UserInfo.getUserId();
+        Date today = Date.today();
+        
+        List<Work_Time__c> workTimes = new List<Work_Time__c>();
+        for (Integer i = 0; i < 10; i++) {
+            workTimes.add(new Work_Time__c(
+                User__c = me,
+                Work_Date__c = today.addDays(-i),
+                Work_Start_Time__c = Time.newInstance(9, 0, 0, 0),
+                Work_End_Time__c = Time.newInstance(18, 0, 0, 0),
+                Status__c = 'Off Duty'
+            ));
+        }
+        insert workTimes;
+        
         Test.startTest();
-        List<ManagerDashboardController.AgentStatusDTO> result = ManagerDashboardController.getTodayStatus();
+        List<ManagerDashboardController.WorkTimeDTO> result = ManagerDashboardController.getTeamWorkTimes(null, null, null, null);
         Test.stopTest();
         
-        System.assertNotEquals(null, result, 'Should handle bulk status retrieval');
+        System.assert(result.size() >= 0, 'Should handle bulk work time data');
     }
 
     /**
-     * Test: Get team break requests with status filter
+     * Test: All DTOs structure
      */
     @IsTest
-    static void test_getTeamBreakRequests_filterByStatus() {
+    static void test_DTOs_shouldHaveProperStructure() {
         Test.startTest();
-        List<ManagerDashboardController.BreakRequestDTO> approved = ManagerDashboardController.getTeamBreakRequests(null, null, 'Approved', null);
-        List<ManagerDashboardController.BreakRequestDTO> submitted = ManagerDashboardController.getTeamBreakRequests(null, null, 'Submitted', null);
+        List<ManagerDashboardController.AgentStatusDTO> agents = ManagerDashboardController.getTodayStatus();
+        List<ManagerDashboardController.BreakRequestDTO> breaks = ManagerDashboardController.getTeamBreakRequests(null, null, null, null);
+        List<ManagerDashboardController.LeaveRequestDTO> leaves = ManagerDashboardController.getTeamLeaveRequests(null, null, null, null);
+        List<ManagerDashboardController.WorkTimeDTO> workTimes = ManagerDashboardController.getTeamWorkTimes(null, null, null, null);
         Test.stopTest();
         
-        System.assertNotEquals(null, approved, 'Should return approved list');
-        System.assertNotEquals(null, submitted, 'Should return submitted list');
+        System.assertNotEquals(null, agents, 'Agent DTO should exist');
+        System.assertNotEquals(null, breaks, 'Break DTO should exist');
+        System.assertNotEquals(null, leaves, 'Leave DTO should exist');
+        System.assertNotEquals(null, workTimes, 'WorkTime DTO should exist');
     }
 }

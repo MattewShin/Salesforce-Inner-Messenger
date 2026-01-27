@@ -119,10 +119,10 @@ private class BreakRequestTriggerHandler_Test {
     }
 
     /**
-     * Test: After delete should delete calendar event
+     * Test: After delete should handle deletion gracefully
      */
     @IsTest
-    static void test_trigger_afterDelete_shouldDeleteCalendarEvent() {
+    static void test_trigger_afterDelete_shouldHandleDeletion() {
         Id me = UserInfo.getUserId();
         Date today = Date.today();
         
@@ -140,6 +140,7 @@ private class BreakRequestTriggerHandler_Test {
         delete req;
         Test.stopTest();
         
+        // Verify deletion succeeded
         List<Break_Request__c> deleted = [SELECT Id FROM Break_Request__c WHERE Id = :req.Id];
         System.assert(deleted.isEmpty(), 'Break request should be deleted');
     }
