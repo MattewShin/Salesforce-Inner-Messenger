@@ -378,6 +378,87 @@ public with sharing class ChatController {
         return results;
     }
 
+    // Get all messages for a chat session (for export/download)
+    // Returns all messages without pagination limit for Excel export
+    @AuraEnabled
+    public static List<MessageWrapper> getAllMessagesForExport(Id sessionId) {
+        if (sessionId == null) return new List<MessageWrapper>();
+
+        // Get all messages without limit (up to SOQL limit of 50,000)
+        List<Inner_Chat_Message__c> msgs = [
+            SELECT Id, Content__c, Sender__c, Sender__r.Name, CreatedDate,
+                   Reply_To__c, Reply_Preview__c,
+                   Reply_To__r.Content__c, Reply_To__r.Sender__r.Name,
+                   (SELECT ContentDocumentId, ContentDocument.Title, ContentDocument.FileExtension, ContentDocument.LatestPublishedVersionId
+                    FROM ContentDocumentLinks LIMIT 1)
+            FROM Inner_Chat_Message__c
+            WHERE Inner_Chat_Session__c = :sessionId
+            ORDER BY CreatedDate ASC
+        ];
+
+        // Get participant count for unread calculation
+        Integer totalParticipants = [
+            SELECT COUNT() 
+            FROM Inner_Chat_Participant__c 
+            WHERE Inner_Chat_Session__c = :sessionId
+        ];
+
+        List<MessageWrapper> results = new List<MessageWrapper>();
+        for (Inner_Chat_Message__c msg : msgs) {
+            // For export, we don't need detailed unread counts, just basic info
+            results.add(new MessageWrapper(msg, 0, 0, Math.max(totalParticipants - 1, 0)));
+        }
+        return results;
+    }
+
+    // Upload image from clipboard (Base64) and return ContentDocumentId
+    @AuraEnabled
+    public static Id uploadImageFromBase64(Id sessionId, String base64Data, String fileName) {
+        try {
+            // Remove data URL prefix if present (e.g., "data:image/png;base64,")
+            String base64Content = base64Data;
+            if (base64Data.contains(',')) {
+                base64Content = base64Data.substring(base64Data.indexOf(',') + 1);
+            }
+
+            // Decode base64 to Blob
+            Blob fileBlob = EncodingUtil.base64Decode(base64Content);
+
+            // Determine file extension from fileName or default to png
+            String fileExtension = 'png';
+            if (fileName != null && fileName.contains('.')) {
+                fileExtension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
+            } else if (base64Data.startsWith('data:image/')) {
+                // Extract extension from data URL if available
+                String mimeType = base64Data.substring(5, base64Data.indexOf(';'));
+                if (mimeType.contains('jpeg')) fileExtension = 'jpg';
+                else if (mimeType.contains('gif')) fileExtension = 'gif';
+                else if (mimeType.contains('webp')) fileExtension = 'webp';
+                else if (mimeType.contains('bmp')) fileExtension = 'bmp';
+            }
+
+            // Generate unique filename with timestamp and user name
+            String timestamp = String.valueOf(System.now().getTime());
+            String userName = UserInfo.getName().replace(' ', '_');
+            String uniqueFileName = 'Screenshot_' + userName + '_' + timestamp + '.' + fileExtension;
+
+            // Create ContentVersion
+            ContentVersion cv = new ContentVersion();
+            cv.Title = uniqueFileName;
+            cv.PathOnClient = uniqueFileName;
+            cv.VersionData = fileBlob;
+            cv.FirstPublishLocationId = sessionId; // Link to chat session (creates ContentDocumentLink automatically)
+            insert cv;
+
+            // Get ContentDocumentId
+            cv = [SELECT ContentDocumentId FROM ContentVersion WHERE Id = :cv.Id LIMIT 1];
+            return cv.ContentDocumentId;
+
+        } catch (Exception e) {
+            throw new AuraHandledException('Image upload failed: ' + e.getMessage());
+        }
+    }
+
     // Send message and publish notification
     @AuraEnabled
     public static void sendMessage(Id sessionId, String content, Id contentDocumentId, Id replyToMessageId, String replyPreview) {

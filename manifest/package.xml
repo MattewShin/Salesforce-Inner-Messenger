@@ -5,6 +5,10 @@
     <types>
         <members>ChatController</members>
         <members>ChatController_Test</members>
+        <members>ChatMessageCleanupScheduler</members>
+        <members>ChatMessageCleanupScheduler_Test</members>
+        <members>ChatMessageCleanupBatch</members>
+        <members>ChatMessageCleanupBatch_Test</members> 
         <name>ApexClass</name>
     </types>
     
@@ -19,7 +23,7 @@
         <members>LeaveBalanceController</members>
         <members>LeaveBalanceController_Test</members>
         <name>ApexClass</name>
-    </types>
+    </types> 
     
     <!-- Break functionality -->
     <types>

@@ -16,7 +16,14 @@ import markSessionAsRead from '@salesforce/apex/ChatController.markSessionAsRead
 import setPinned from '@salesforce/apex/ChatController.setPinned';
 import setMuted from '@salesforce/apex/ChatController.setMuted';
 import getParticipants from '@salesforce/apex/ChatController.getParticipants';
+import getAllMessagesForExport from '@salesforce/apex/ChatController.getAllMessagesForExport';
+import uploadImageFromBase64 from '@salesforce/apex/ChatController.uploadImageFromBase64';
 import USER_ID from '@salesforce/user/Id';
+import LANGUAGE from '@salesforce/i18n/lang';
+import { LABELS } from './lang';
+
+const USER_LANG = (LANGUAGE || 'en').toLowerCase();
+const LOCALE = USER_LANG.startsWith('ko') ? 'KO' : 'EN';
 
 export default class UtilityChat extends NavigationMixin(LightningElement) {
     @api height;
@@ -67,6 +74,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     subscription = {};
     channelName = '/event/Inner_Chat_Notification__e';
     currentUserId = USER_ID;
+    labels = LABELS[LOCALE];
 
     get isListView() {
         return !this.isChatView;
@@ -77,9 +85,21 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     }
 
     connectedCallback() {
-        this.handleSubscribe();
-        this.writeActiveSessionToStorage();
-        this.loadSessions();
+        // 팝업 창에서도 작동하도록 초기화
+        try {
+            this.handleSubscribe();
+            this.writeActiveSessionToStorage();
+            this.loadSessions();
+        } catch (error) {
+            console.error('Error in connectedCallback', error);
+            // 재시도
+            setTimeout(() => {
+                if (!this.subscription || !this.subscription.id) {
+                    this.handleSubscribe();
+                }
+                this.loadSessions();
+            }, 1000);
+        }
     }
 
     disconnectedCallback() {
@@ -101,7 +121,8 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             ...s,
             cssClass: this.sessionFlashMap[this.normalizeId(s.sessionId)] ? 'session-item flashing' : 'session-item',
             pinIcon: s.isPinned ? 'utility:pinned' : 'utility:pin',
-            muteIcon: s.isMuted ? 'utility:volume_off' : 'utility:volume_high'
+            muteIcon: s.isMuted ? 'utility:volume_off' : 'utility:volume_high',
+            formattedLastMessageTime: this.formatTime(s.lastMessageAt)
         }));
     }
 
@@ -183,6 +204,9 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                 showActions: !isSystem,
                 actionsRowClass: msg.isMine ? 'message-actions-row mine' : 'message-actions-row others',
                 actionsMenuAlignment: msg.isMine ? 'right' : 'left',
+
+                // Pre-formatted time string (locale from lang.js, not Salesforce LocaleSidKey)
+                formattedTime: this.formatTime(msg.createdDate),
 
                 // Attachment (preview handling)
                 attachment
@@ -348,12 +372,24 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
         try {
             const d = new Date(dt);
             if (Number.isNaN(d.getTime())) return '';
-            // Example: "Friday, January 8, 2026"
-            return d.toLocaleDateString('en-US', {
+            return d.toLocaleDateString(this.labels.dateLocale, {
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric',
                 weekday: 'long'
+            });
+        } catch (e) {
+            return '';
+        }
+    }
+
+    formatTime(dateStr) {
+        try {
+            const d = new Date(dateStr);
+            if (Number.isNaN(d.getTime())) return '';
+            return d.toLocaleTimeString(this.labels.dateLocale, {
+                hour: '2-digit',
+                minute: '2-digit'
             });
         } catch (e) {
             return '';
@@ -403,14 +439,14 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
 
         // Invited: "A invited B."
         if (t.includes('invited')) {
-            const base = t.replace(/invited.*/, '').trim(); // "A"
-            return { line1: base, line2: 'invited participants' };
+            const base = t.replace(/invited.*/, '').trim();
+            return { line1: base, line2: this.labels.systemInvited };
         }
 
         // Left: "A left the chat."
         if (t.includes('left')) {
-            const base = t.replace(/left.*/, '').trim(); // "A"
-            return { line1: base, line2: 'left the chat' };
+            const base = t.replace(/left.*/, '').trim();
+            return { line1: base, line2: this.labels.systemLeft };
         }
 
         // Generic system message (custom)
@@ -466,15 +502,15 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     }
 
     get peopleModalTitle() {
-        return this.isPeopleCreateMode ? 'Create Chat' : 'Invite Participants';
+        return this.isPeopleCreateMode ? this.labels.createChatTitle : this.labels.inviteParticipantsTitle;
     }
 
     get peopleStepLabel() {
-        return this.isPeopleStep1 ? 'Step 1/2: Select' : 'Step 2/2: Confirm';
+        return this.isPeopleStep1 ? this.labels.step1Label : this.labels.step2Label;
     }
 
     get peoplePrimaryLabel() {
-        return this.isPeopleCreateMode ? 'Create' : 'Invite';
+        return this.isPeopleCreateMode ? this.labels.createBtn : this.labels.inviteBtn;
     }
 
     get peopleSelectedPreview() {
@@ -592,7 +628,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                 const existed = !!result?.existed;
                 if (existed) {
                     // eslint-disable-next-line no-alert
-                    alert('Chat session already exists. Joining existing session.');
+                    alert(this.labels.sessionExistsAlert);
                 }
 
                 // After create, immediately switch to chat view
@@ -626,7 +662,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                 return;
             }
         } catch (e) {
-            const msg = e?.body?.message || e?.message || 'Request processing error occurred.';
+            const msg = e?.body?.message || e?.message || this.labels.requestErrorDefault;
             // eslint-disable-next-line no-alert
             alert(msg);
         } finally {
@@ -651,8 +687,12 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                 this.openRenameModal();
                 return;
             }
+            if (action === 'download') {
+                await this.downloadChatHistory();
+                return;
+            }
             if (action === 'leave') {
-                const ok = window.confirm('Do you want to leave this chat? (Other participants will see your departure message)');
+                const ok = window.confirm(this.labels.leaveConfirm);
                 if (!ok) return;
 
                 await leaveChatSession({ sessionId: this.currentSessionId });
@@ -661,7 +701,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             }
 
             if (action === 'delete') {
-                const ok = window.confirm('Delete this chat permanently? (Messages and participants data will be removed)');
+                const ok = window.confirm(this.labels.deleteConfirm);
                 if (!ok) return;
 
                 await deleteChatSession({ sessionId: this.currentSessionId });
@@ -669,8 +709,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                 return;
             }
         } catch (e) {
-            // Use simple alert for user feedback
-            const msg = e?.body?.message || e?.message || 'Request processing error occurred.';
+            const msg = e?.body?.message || e?.message || this.labels.requestErrorDefault;
             // eslint-disable-next-line no-alert
             alert(msg);
         }
@@ -710,7 +749,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                 rowClass: p?.isMe ? 'participants-item me' : 'participants-item'
             }));
         } catch (e) {
-            const msg = e?.body?.message || e?.message || 'Failed to load participants list.';
+            const msg = e?.body?.message || e?.message || this.labels.loadParticipantsError;
             // eslint-disable-next-line no-alert
             alert(msg);
             this.participants = [];
@@ -720,7 +759,12 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     }
 
     get participantCountLabel() {
-        return `${(this.participants || []).length} participants`;
+        return `${(this.participants || []).length}${this.labels.participantsUnit}`;
+    }
+
+    get selectedCountLabel() {
+        const n = (this.peopleSelectedUsers || []).length;
+        return `(${n}${this.labels.personCountSuffix})`;
     }
 
     // --- Rename Modal ---
@@ -759,7 +803,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             this.closeRenameModal();
             await this.loadSessions();
         } catch (e) {
-            const msg = e?.body?.message || e?.message || 'Chat rename error occurred.';
+            const msg = e?.body?.message || e?.message || this.labels.renameError;
             // eslint-disable-next-line no-alert
             alert(msg);
         } finally {
@@ -770,17 +814,115 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
 
     handleInputChange(event) {
         this.messageInput = event.target.value;
+        // Auto-resize textarea height
+        this.autoResizeTextarea();
+    }
+
+    autoResizeTextarea() {
+        setTimeout(() => {
+            try {
+                const textarea = this.template.querySelector('.input-box textarea');
+                if (textarea) {
+                    // Reset height to auto to get the correct scrollHeight
+                    textarea.style.height = 'auto';
+                    // Set height based on content, but limit max height
+                    const maxHeight = 120;
+                    const newHeight = Math.min(textarea.scrollHeight, maxHeight);
+                    textarea.style.height = `${newHeight}px`;
+                    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+                }
+            } catch (e) {
+                // ignore
+            }
+        }, 0);
     }
 
     handleInputKeyDown(event) {
-        // lightning-input oncommit doesn't trigger on Enter + Shift, so direct key catch
-        // Shift+Enter = line break
+        // Enter = send message, Shift+Enter = line break
         if (this.isLoading) return;
         if (event && (event.isComposing || event.keyCode === 229)) return; // IME composition
+        
+        // Enter without Shift: send message
         if (event?.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
             event.stopPropagation();
             this.handleSendMessage();
+        }
+        // Shift+Enter: allow default behavior (line break)
+    }
+
+    async handlePaste(event) {
+        // 클립보드에서 이미지 붙여넣기 처리
+        if (this.isLoading || !this.currentSessionId) return;
+
+        try {
+            const clipboardData = event.clipboardData || window.clipboardData;
+            if (!clipboardData) return;
+
+            const items = clipboardData.items;
+            if (!items) return;
+
+            // 이미지 항목 찾기
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                if (item.type.indexOf('image') !== -1) {
+                    event.preventDefault(); // 기본 붙여넣기 동작 방지
+                    
+                    const file = item.getAsFile();
+                    if (!file) continue;
+
+                    // 파일을 Base64로 변환
+                    const reader = new FileReader();
+                    reader.onload = async (e) => {
+                        try {
+                            const base64Data = e.target.result;
+                            const fileName = file.name || 'screenshot.png';
+
+                            this.isLoading = true;
+
+                            // Apex 메서드로 이미지 업로드
+                            const contentDocumentId = await uploadImageFromBase64({
+                                sessionId: this.currentSessionId,
+                                base64Data: base64Data,
+                                fileName: fileName
+                            });
+
+                            // 메시지와 함께 전송
+                            const replyToMessageId = this.replyDraft?.messageId || null;
+                            const replyPreview = this.replyDraft?.preview || null;
+
+                            await sendMessage({
+                                sessionId: this.currentSessionId,
+                                content: this.labels.screenshotAttached,
+                                contentDocumentId: contentDocumentId,
+                                replyToMessageId,
+                                replyPreview
+                            });
+
+                            this.isLoading = false;
+                            this.replyDraft = null;
+                            this.loadMessages();
+                            this.focusChatInput();
+                        } catch (error) {
+                            this.isLoading = false;
+                            console.error('Image paste upload error', error);
+                            const msg = error?.body?.message || error?.message || this.labels.imagePasteError;
+                            // eslint-disable-next-line no-alert
+                            alert(msg);
+                        }
+                    };
+
+                    reader.onerror = () => {
+                        console.error('FileReader error');
+                        this.isLoading = false;
+                    };
+
+                    reader.readAsDataURL(file);
+                    break; // 첫 번째 이미지만 처리
+                }
+            }
+        } catch (error) {
+            console.error('Paste event error', error);
         }
     }
 
@@ -793,7 +935,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                     input.focus();
                     return;
                 }
-                const fallback = this.template.querySelector('.input-box');
+                const fallback = this.template.querySelector('.input-box textarea');
                 if (fallback && typeof fallback.focus === 'function') {
                     fallback.focus();
                 }
@@ -804,7 +946,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     }
 
     handleSendMessage() {
-        // lightning-input onchange delayed state: use ref for immediate read
+        // lightning-textarea onchange delayed state: use ref for immediate read
         // Message input component: read state directly to avoid race conditions
         const raw = (this.refs?.chatInput?.value ?? this.messageInput ?? '').toString();
         if (!raw.trim()) return;
@@ -819,6 +961,8 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             if (this.refs?.chatInput) {
                 this.refs.chatInput.value = '';
             }
+            // Reset textarea height after clearing
+            this.autoResizeTextarea();
         } catch (e) {
             // ignore
         }
@@ -854,7 +998,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             const replyPreview = this.replyDraft?.preview || null;
             sendMessage({
                 sessionId: this.currentSessionId,
-                content: 'File attached.',
+                content: this.labels.fileAttached,
                 contentDocumentId: docId,
                 replyToMessageId,
                 replyPreview
@@ -896,7 +1040,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
         const senderName = msg.senderName || '';
         let preview = (msg.displayContent || '').toString().trim();
         if (!preview && msg.attachment?.title) {
-            preview = `[File] ${msg.attachment.title}`;
+            preview = `${this.labels.filePrefix}${msg.attachment.title}`;
         }
         preview = preview.replace(/\s+/g, ' ').trim();
         if (preview.length > 80) preview = preview.substring(0, 77) + '...';
@@ -912,6 +1056,78 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     clearReplyDraft() {
         this.replyDraft = null;
         this.focusChatInput();
+    }
+
+    handleReplyQuoteClick(event) {
+        const replyToId = event.currentTarget?.dataset?.id;
+        if (!replyToId) return;
+
+        const normalizedReplyToId = this.normalizeId(replyToId);
+
+        // Scroll to the original message
+        setTimeout(() => {
+            try {
+                const container = this.getMessageContainerEl();
+                if (!container) return;
+
+                // Find all message wrapper elements
+                const allMessageWrappers = container.querySelectorAll('.msg-wrapper[data-msg-id]');
+                let targetElement = null;
+
+                // Search through all message wrappers and compare normalized IDs
+                for (const wrapper of allMessageWrappers) {
+                    const msgId = wrapper.getAttribute('data-msg-id');
+                    if (msgId) {
+                        const normalizedMsgId = this.normalizeId(msgId);
+                        if (normalizedMsgId === normalizedReplyToId) {
+                            targetElement = wrapper;
+                            break;
+                        }
+                    }
+                }
+
+                if (!targetElement) {
+                    // Message might not be loaded yet, try to find in messages array
+                    const originalMsg = (this.messages || []).find(m => 
+                        m && !m.isDivider && this.normalizeId(m.id) === normalizedReplyToId
+                    );
+                    if (originalMsg) {
+                        // Message exists but not rendered - might be above current view
+                        // Try scrolling to top and then finding it
+                        container.scrollTop = 0;
+                        setTimeout(() => {
+                            const retryWrappers = container.querySelectorAll('.msg-wrapper[data-msg-id]');
+                            for (const wrapper of retryWrappers) {
+                                const msgId = wrapper.getAttribute('data-msg-id');
+                                if (msgId && this.normalizeId(msgId) === normalizedReplyToId) {
+                                    wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    wrapper.classList.add('reply-highlight');
+                                    setTimeout(() => wrapper.classList.remove('reply-highlight'), 2000);
+                                    return;
+                                }
+                            }
+                        }, 200);
+                    }
+                    return;
+                }
+
+                // Use scrollIntoView for better browser compatibility
+                targetElement.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'center' 
+                });
+
+                // Add highlight effect
+                targetElement.classList.add('reply-highlight');
+                setTimeout(() => {
+                    if (targetElement) {
+                        targetElement.classList.remove('reply-highlight');
+                    }
+                }, 2000);
+            } catch (e) {
+                console.error('Error scrolling to original message', e);
+            }
+        }, 100);
     }
 
     async copyToClipboard(text) {
@@ -939,7 +1155,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             document.body.removeChild(ta);
         } catch (e2) {
             // eslint-disable-next-line no-alert
-            alert('Copy failed.');
+            alert(this.labels.copyFailed);
         }
     }
 
@@ -1101,12 +1317,29 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             }
         };
 
-        subscribe(this.channelName, -1, messageCallback).then(response => {
-            this.subscription = response;
-        });
+        subscribe(this.channelName, -1, messageCallback)
+            .then(response => {
+                this.subscription = response;
+            })
+            .catch(error => {
+                console.error('EMP API Subscribe Error', error);
+                // 팝업 창에서 구독 실패 시 재시도
+                setTimeout(() => {
+                    if (!this.subscription || !this.subscription.id) {
+                        this.handleSubscribe();
+                    }
+                }, 2000);
+            });
 
         onError(error => {
             console.error('EMP API Error', error);
+            // 에러 발생 시 재구독 시도
+            if (this.subscription && this.subscription.id) {
+                this.handleUnsubscribe();
+            }
+            setTimeout(() => {
+                this.handleSubscribe();
+            }, 3000);
         });
     }
 
@@ -1144,7 +1377,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             await setPinned({ sessionId, pinned: !pinned });
             await this.loadSessions();
         } catch (e) {
-            const msg = e?.body?.message || e?.message || 'Pin error occurred.';
+            const msg = e?.body?.message || e?.message || this.labels.pinError;
             // eslint-disable-next-line no-alert
             alert(msg);
         }
@@ -1159,9 +1392,120 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             await setMuted({ sessionId, muted: !muted });
             await this.loadSessions();
         } catch (e) {
-            const msg = e?.body?.message || e?.message || 'Mute error occurred.';
+            const msg = e?.body?.message || e?.message || this.labels.muteError;
             // eslint-disable-next-line no-alert
             alert(msg);
         }
+    }
+
+    // --- Chat History Download (Excel/CSV) ---
+
+    async downloadChatHistory() {
+        if (!this.currentSessionId || !this.currentSessionName) {
+            // eslint-disable-next-line no-alert
+            alert(this.labels.noChatRoomInfo);
+            return;
+        }
+
+        this.isLoading = true;
+        try {
+            const messages = await getAllMessagesForExport({ sessionId: this.currentSessionId });
+
+            if (!messages || messages.length === 0) {
+                // eslint-disable-next-line no-alert
+                alert(this.labels.noMessagesToDownload);
+                return;
+            }
+
+            const csvContent = this.generateCSVContent(messages);
+            const BOM = '\uFEFF';
+            const csvWithBOM = BOM + csvContent;
+            const base64Content = btoa(unescape(encodeURIComponent(csvWithBOM)));
+            const dataUrl = `data:text/csv;charset=utf-8;base64,${base64Content}`;
+
+            const now = new Date();
+            const dateStr = now.getFullYear() +
+                String(now.getMonth() + 1).padStart(2, '0') +
+                String(now.getDate()).padStart(2, '0');
+            const timeStr = String(now.getHours()).padStart(2, '0') +
+                String(now.getMinutes()).padStart(2, '0');
+            const filename = `${this.labels.downloadFilenamePrefix}_${this.currentSessionName}_${dateStr}_${timeStr}.csv`;
+
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = filename;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+        } catch (e) {
+            const msg = e?.body?.message || e?.message || this.labels.downloadError;
+            console.error('Download error', e);
+            // eslint-disable-next-line no-alert
+            alert(msg);
+        } finally {
+            this.isLoading = false;
+        }
+    }
+
+    generateCSVContent(messages) {
+        const headers = this.labels.csvHeaders;
+        const rows = [headers.join(',')];
+
+        // Process each message
+        for (const msg of messages) {
+            const row = [];
+            
+            // Date/Time (YYYY-MM-DD HH:MM:SS format)
+            if (msg.createdDate) {
+                const date = new Date(msg.createdDate);
+                const dateStr = date.getFullYear() + '-' +
+                    String(date.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(date.getDate()).padStart(2, '0');
+                const timeStr = String(date.getHours()).padStart(2, '0') + ':' +
+                    String(date.getMinutes()).padStart(2, '0') + ':' +
+                    String(date.getSeconds()).padStart(2, '0');
+                row.push(`"${dateStr} ${timeStr}"`);
+            } else {
+                row.push('""');
+            }
+
+            // Sender name
+            row.push(`"${this.escapeCSV(msg.senderName || '')}"`);
+
+            // Message content
+            let content = msg.content || '';
+            // Remove system message prefix if present
+            content = content.replace(/^\[SYSTEM\]\s*/, '');
+            row.push(`"${this.escapeCSV(content)}"`);
+
+            // Reply to sender name
+            row.push(`"${this.escapeCSV(msg.replyToSenderName || '')}"`);
+
+            // Reply preview
+            row.push(`"${this.escapeCSV(msg.replyToPreview || '')}"`);
+
+            // Attachment info
+            let attachmentInfo = '';
+            if (msg.attachment) {
+                attachmentInfo = `${this.labels.fileAttachPrefix}${msg.attachment.title || ''}`;
+                if (msg.attachment.extension) {
+                    attachmentInfo += `.${msg.attachment.extension}`;
+                }
+            }
+            row.push(`"${this.escapeCSV(attachmentInfo)}"`);
+
+            rows.push(row.join(','));
+        }
+
+        return rows.join('\n');
+    }
+
+    escapeCSV(text) {
+        if (text == null) return '';
+        const str = String(text);
+        // Escape double quotes by doubling them
+        return str.replace(/"/g, '""');
     }
 }

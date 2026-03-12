@@ -8,6 +8,60 @@
 
 ## 📋 프로젝트 개요
 
+### **채팅 기록 자동 삭제 (Data Retention)**
+
+채팅 기록은 **1년 보관 정책**을 따릅니다:
+- 1년 이상 된 메시지는 자동으로 삭제됩니다
+- 매일 새벽 2시에 배치 작업이 실행됩니다
+- 첨부 파일(ContentDocument)도 함께 삭제됩니다
+
+**스케줄러 설정 방법:**
+
+**방법 1: Anonymous Apex로 설정 (권장)**
+```apex
+// Developer Console 또는 VS Code에서 실행
+ChatMessageCleanupScheduler.scheduleDailyCleanup();
+```
+
+**방법 2: Setup에서 수동 설정 (Cron Expression 사용)**
+
+1. Setup → Apex → Scheduled Jobs
+2. "Schedule Apex" 클릭
+3. 다음 정보 입력:
+   - **Apex Class**: `ChatMessageCleanupScheduler`
+   - **Job Name**: `Chat Message Cleanup - Daily`
+   - **Cron Expression**: `0 0 2 * * ?` (매일 새벽 2시)
+4. Save 클릭
+
+**Cron Expression 형식 설명:**
+```
+초 분 시 일 월 요일 [연도]
+0  0  2  *  *  ?
+```
+
+**기본 설정 (매일 새벽 2시):**
+- `0 0 2 * * ?` - 매일 새벽 2시 정각
+
+**다른 시간대 설정 예시:**
+- `0 0 1 * * ?` - 매일 새벽 1시
+- `0 0 3 * * ?` - 매일 새벽 3시
+- `0 30 2 * * ?` - 매일 새벽 2시 30분
+- `0 0 2 ? * MON-FRI` - 평일만 새벽 2시 (월~금)
+- `0 0 2 1 * ?` - 매월 1일 새벽 2시
+- `0 0 2 * * SUN` - 매주 일요일 새벽 2시
+
+**Cron Expression 필드 설명:**
+- **초 (0-59)**: `0` = 정각
+- **분 (0-59)**: `0` = 정각
+- **시 (0-23)**: `2` = 새벽 2시
+- **일 (1-31)**: `*` = 매일
+- **월 (1-12 또는 JAN-DEC)**: `*` = 매월
+- **요일 (1-7 또는 SUN-SAT)**: `?` = 특정 요일 지정 안 함
+
+---
+
+## 📋 프로젝트 개요
+
 이 프로젝트는 Salesforce 조직에 다음 기능을 제공합니다:
 
 ### 1. **Inner Chat (사내 실시간 메신저)**

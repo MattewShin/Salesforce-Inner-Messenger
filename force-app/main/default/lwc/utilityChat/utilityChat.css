@@ -4,7 +4,9 @@
     width: 100%;
     position: relative; /* 자식 absolute 배치를 위해 */
     background-color: white;
-    overflow: hidden;
+    overflow: hidden; /* 컨테이너 자체는 스크롤하지 않음 */
+    display: flex;
+    flex-direction: column;
 }
 
 /* 헤더: 항상 상단에 고정 */
@@ -20,7 +22,9 @@
     top: 0;
     left: 0;
     right: 0;
-    z-index: 10;
+    z-index: 1000; /* 높은 z-index로 확실히 고정 */
+    flex-shrink: 0; /* flex 컨테이너에서 축소 방지 */
+    background-color: #f3f3f3; /* 배경색 명시로 투명도 방지 */
 }
 
 .chat-header-menu {
@@ -125,6 +129,7 @@
     display: flex;
     flex-direction: column;
     --input-area-height: 60px;
+    overflow: hidden; /* 스크롤은 메시지 영역에만 적용 */
 }
 
 .chat-area.replying {
@@ -144,6 +149,7 @@
     flex-direction: column;
     gap: 12px; /* 간격 늘림 */
     background-color: #fff;
+    min-height: 0; /* flex 컨테이너에서 스크롤 작동 보장 */
 }
 
 /* 메시지 래퍼: 전체 정렬 제어 */
@@ -407,7 +413,7 @@
 
 /* 입력창 영역: 하단 고정 */
 .input-area {
-    position: absolute;
+    position: absolute; /* 컨테이너 내에서 고정 */
     bottom: 0;
     left: 0;
     right: 0;
@@ -419,7 +425,8 @@
     flex-direction: column;
     justify-content: center;
     gap: 6px;
-    z-index: 20;
+    z-index: 1000; /* 높은 z-index로 확실히 고정 */
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1); /* 시각적 구분을 위한 그림자 */
 }
 
 .input-row {
@@ -461,17 +468,11 @@
     white-space: nowrap;
 }
 
-.message-actions-row {
-    display: inline-flex;
-    margin-bottom: 2px;
-}
-
-.message-actions-row.mine {
+/* 메시지 액션 버튼: bubble-row 안에 인라인 배치 */
+.msg-action-btn {
+    flex-shrink: 0;
     align-self: flex-end;
-}
-
-.message-actions-row.others {
-    align-self: flex-start;
+    margin-bottom: 2px;
 }
 
 .reply-quote {
@@ -480,10 +481,50 @@
     border-radius: 8px;
     border-left: 3px solid rgba(216, 59, 1, 0.8);
     background: rgba(255, 255, 255, 0.2);
+    min-width: 0;
+    max-width: 100%;
+    cursor: pointer;
+    transition: background-color 0.2s ease, opacity 0.2s ease;
+}
+
+.reply-quote:hover {
+    background: rgba(255, 255, 255, 0.35);
+    opacity: 0.95;
+}
+
+.reply-quote:active {
+    background: rgba(255, 255, 255, 0.25);
 }
 
 .msg-wrapper.others .reply-quote {
     background: rgba(0, 0, 0, 0.05);
+}
+
+.msg-wrapper.others .reply-quote:hover {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.msg-wrapper.others .reply-quote:active {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+/* 하이라이트 효과 (원본 메시지로 스크롤 시) */
+.msg-wrapper.reply-highlight {
+    animation: replyHighlight 2s ease-out;
+}
+
+@keyframes replyHighlight {
+    0% {
+        background-color: rgba(216, 59, 1, 0.2);
+        transform: scale(1);
+    }
+    50% {
+        background-color: rgba(216, 59, 1, 0.15);
+    }
+    100% {
+        background-color: transparent;
+        transform: scale(1);
+    }
 }
 
 .reply-quote-sender {
@@ -496,9 +537,9 @@
 .reply-quote-preview {
     font-size: 0.8rem;
     opacity: 0.9;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: pre-wrap;
 }
 
 .file-upload-wrapper {
@@ -534,6 +575,19 @@
 
 .input-box {
     flex: 1;
+    min-height: 32px;
+    max-height: 120px;
+    resize: none;
+    overflow-y: auto;
+}
+
+.input-box textarea {
+    min-height: 32px;
+    max-height: 120px;
+    resize: none;
+    overflow-y: auto;
+    line-height: 1.5;
+    padding: 6px 12px;
 }
 
 /* Modal styles */
