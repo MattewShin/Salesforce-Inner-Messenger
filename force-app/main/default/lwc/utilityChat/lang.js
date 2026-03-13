@@ -21,6 +21,9 @@ export const LABELS = {
 
         // ── Session List ─────────────────────────────────────────
         noSessions: 'No chat rooms joined.',
+        selectChatMessage: 'Select a chat to view messages',
+        collapsePanelAlt: 'Collapse chat list',
+        expandPanelAlt: 'Expand chat list',
         pinAlt: 'Pin',
         pinTitle: 'Pin',
         muteAlt: 'Notifications',
@@ -119,6 +122,9 @@ export const LABELS = {
 
         // ── Session List ─────────────────────────────────────────
         noSessions: '참여 중인 채팅방이 없습니다.',
+        selectChatMessage: '채팅방을 선택하여 메시지를 확인하세요',
+        collapsePanelAlt: '채팅방 목록 접기',
+        expandPanelAlt: '채팅방 목록 펼치기',
         pinAlt: '고정',
         pinTitle: '고정',
         muteAlt: '알림',

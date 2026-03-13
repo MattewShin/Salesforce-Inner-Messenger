@@ -211,6 +211,13 @@
             try {
                 component.set("v.lastDebug", "participant check passed");
             } catch (e) { }
+            
+            // LWC로 이벤트 전달 (모든 타입의 이벤트 전달)
+            try {
+                this.notifyLWC(component, data);
+            } catch (eNotify) {
+                // LWC 전달 실패는 무시
+            }
         } catch (eP) {
             // participantIds가 없거나 형식이 다르면(구버전) 오탐 방지를 위해 무시
             try {
@@ -303,12 +310,13 @@
         self.findTargetUtilityId(component, 8).then(function(utilityId) {
             if (!utilityId) {
                 try {
-                    component.set("v.lastDebug", "target utility not found (label=" + (component.get("v.targetUtilityLabel") || "") + ")");
+                    var label = component.get("v.targetUtilityLabel") || "";
+                    component.set("v.lastDebug", "target utility not found (label=" + label + "). Check Utility Bar item name matches.");
                 } catch (e) { }
                 return;
             }
             try {
-                component.set("v.lastDebug", "utility found: " + utilityId);
+                component.set("v.lastDebug", "utility found: " + utilityId + " (checking visibility...)");
             } catch (e) { }
             var utilityBarAPI = component.find("utilitybar");
             return utilityBarAPI
@@ -323,11 +331,13 @@
                         // - 그 외(리스트 화면이거나 다른 방이거나 active 정보가 없으면) 플래시
                         try {
                             var isChatView = (window.localStorage.getItem("utilityChat.isChatView") || "") === "true";
-                            var active15 = (window.localStorage.getItem("utilityChat.activeSession15") || "").substring(0, 15);
-                            // 리스트 화면(isChatView=false)이라도 사용자는 해당 방을 "보고 있는 상태"가 아니므로 플래시가 필요합니다.
-                            if (!isChatView || !active15) {
+                            var active15Raw = window.localStorage.getItem("utilityChat.activeSession15") || "";
+                            var active15 = active15Raw ? active15Raw.substring(0, 15) : "";
+                            // 리스트 화면(isChatView=false)이거나 active15가 없으면 플래시 발생
+                            // 채팅방 생성 직후 첫 메시지의 경우 active15가 아직 설정되지 않았을 수 있음
+                            if (!isChatView || !active15 || active15.trim() === "") {
                                 shouldFlash = true;
-                                component.set("v.lastDebug", "event (visible - not in session view)");
+                                component.set("v.lastDebug", "event (visible - not in session view or no active15)");
                             } else if (active15 !== sessionId15) {
                                 shouldFlash = true;
                                 component.set("v.lastDebug", "event (other session while visible)");
@@ -335,6 +345,8 @@
                                 component.set("v.lastDebug", "event (visible - same session)");
                             }
                         } catch (eLS) {
+                            // localStorage 읽기 실패 시 플래시 발생 (안전한 기본값)
+                            shouldFlash = true;
                             component.set("v.lastDebug", "event (visible - no storage)");
                         }
                     }
@@ -550,5 +562,33 @@
                 }
             }
         });
+    },
+
+    notifyLWC: function(component, data) {
+        try {
+            // LWC의 public 메서드 호출
+            var lwcComponent = component.find("utilityChatLWC");
+            if (lwcComponent) {
+                // Aura에서 LWC의 @api 메서드 호출
+                if (typeof lwcComponent.handlePlatformEvent === 'function') {
+                    lwcComponent.handlePlatformEvent(data);
+                } else {
+                    // 디버그: 메서드가 없는 경우
+                    try {
+                        component.set("v.lastDebug", "LWC method not found");
+                    } catch (e) { }
+                }
+            } else {
+                // 디버그: LWC 컴포넌트를 찾지 못한 경우
+                try {
+                    component.set("v.lastDebug", "LWC component not found");
+                } catch (e) { }
+            }
+        } catch (e) {
+            // LWC가 없거나 메서드 호출 실패 시 디버그 로그
+            try {
+                component.set("v.lastDebug", "notifyLWC error: " + (e.message || e));
+            } catch (e2) { }
+        }
     }
 })

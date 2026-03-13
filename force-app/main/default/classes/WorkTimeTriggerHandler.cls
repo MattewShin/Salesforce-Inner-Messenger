@@ -14,4 +14,3 @@ public with sharing class WorkTimeTriggerHandler {
         }
     }
 }
-

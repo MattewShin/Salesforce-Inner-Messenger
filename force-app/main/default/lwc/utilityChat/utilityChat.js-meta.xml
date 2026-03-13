@@ -8,8 +8,8 @@
     </targets>
     <targetConfigs>
         <targetConfig targets="lightning__UtilityBar">
-            <property name="height" type="Integer" default="500" label="Height" />
-            <property name="width" type="Integer" default="400" label="Width" />
+            <property name="height" type="Integer" default="600" label="Height" />
+            <property name="width" type="Integer" default="700" label="Width" />
         </targetConfig>
     </targetConfigs>
 </LightningComponentBundle>

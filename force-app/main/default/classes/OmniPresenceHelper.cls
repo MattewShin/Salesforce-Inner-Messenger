@@ -142,4 +142,3 @@ public without sharing class OmniPresenceHelper {
         return result;
     }
 }
-

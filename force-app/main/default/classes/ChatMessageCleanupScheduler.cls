@@ -1,13 +1,17 @@
 /**
  * ===========================================================================================
  * @description       : Scheduler class to run chat message cleanup batch job daily
+ *                      This is part of the 2-stage retention policy:
+ *                      1. Archive messages older than 3 months (ChatMessageArchiveScheduler - 3 AM)
+ *                      2. Delete messages and archives older than 1 year (this scheduler - 2 AM)
  * @author            : CNXK
- * @last modified on  : 2025-03-06
+ * @last modified on  : 2025-03-13
  * @last modified by  : CNXK
  * ===========================================================================================
  * Modification Log
  * Ver   Date         Author              Description
  * 1.0   2025-03-06   CNXK                Initial version - Schedule batch job to delete messages older than 1 year
+ * 2.0   2025-03-13   CNXK                Updated description for 2-stage retention policy
  */
 public class ChatMessageCleanupScheduler implements Schedulable {
     

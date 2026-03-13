@@ -1,5 +1,4 @@
 import { LightningElement, track, api } from 'lwc';
-import { subscribe, unsubscribe, onError } from 'lightning/empApi';
 import { NavigationMixin } from 'lightning/navigation';
 import getChatSessions from '@salesforce/apex/ChatController.getChatSessions';
 import getChatSession from '@salesforce/apex/ChatController.getChatSession';
@@ -9,7 +8,6 @@ import sendMessage from '@salesforce/apex/ChatController.sendMessage';
 import createOrGetChatSession from '@salesforce/apex/ChatController.createOrGetChatSession';
 import searchUsers from '@salesforce/apex/ChatController.searchUsers';
 import leaveChatSession from '@salesforce/apex/ChatController.leaveChatSession';
-import deleteChatSession from '@salesforce/apex/ChatController.deleteChatSession';
 import inviteParticipants from '@salesforce/apex/ChatController.inviteParticipants';
 import renameChatSession from '@salesforce/apex/ChatController.renameChatSession';
 import markSessionAsRead from '@salesforce/apex/ChatController.markSessionAsRead';
@@ -28,6 +26,11 @@ const LOCALE = USER_LANG.startsWith('ko') ? 'KO' : 'EN';
 export default class UtilityChat extends NavigationMixin(LightningElement) {
     @api height;
     @api width;
+
+    // Aura에서 호출할 수 있는 public 메서드
+    @api handlePlatformEvent(data) {
+        this.handleAuraEvent({ detail: { payload: data } });
+    }
 
     @track sessions = [];
 
@@ -59,6 +62,8 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     markReadTimer;
 
     isChatView = false;
+    // Left panel collapse state
+    @track isLeftPanelCollapsed = false;
     // People Modal (shared): create/invite
     isPeopleModalOpen = false;
     peopleModalMode = 'create'; // 'create' | 'invite'
@@ -71,8 +76,7 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
     @track sessionFlashMap = {}; // { [sessionId]: true }
     mutedSessionMap = {}; // { [sessionId15]: true }
 
-    subscription = {};
-    channelName = '/event/Inner_Chat_Notification__e';
+    // Platform Event 구독은 Aura 컴포넌트(chatFlashAura)에서 처리
     currentUserId = USER_ID;
     labels = LABELS[LOCALE];
 
@@ -84,26 +88,44 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
         return this.sessions.length === 0;
     }
 
+    get hasSessions() {
+        return this.sessions.length > 0;
+    }
+
+    get leftPanelClass() {
+        return this.isLeftPanelCollapsed ? 'left-panel collapsed' : 'left-panel';
+    }
+
+    get togglePanelIcon() {
+        return this.isLeftPanelCollapsed ? 'utility:chevronright' : 'utility:chevronleft';
+    }
+
+    get togglePanelAlt() {
+        return this.isLeftPanelCollapsed ? this.labels.expandPanelAlt : this.labels.collapsePanelAlt;
+    }
+
+    handleToggleLeftPanel() {
+        this.isLeftPanelCollapsed = !this.isLeftPanelCollapsed;
+    }
+
     connectedCallback() {
         // 팝업 창에서도 작동하도록 초기화
         try {
-            this.handleSubscribe();
+            // Platform Event 구독은 Aura에서 처리하므로 제거
+            // Aura는 handlePlatformEvent public 메서드를 통해 이벤트를 전달함
             this.writeActiveSessionToStorage();
             this.loadSessions();
         } catch (error) {
             console.error('Error in connectedCallback', error);
             // 재시도
             setTimeout(() => {
-                if (!this.subscription || !this.subscription.id) {
-                    this.handleSubscribe();
-                }
                 this.loadSessions();
             }, 1000);
         }
     }
 
     disconnectedCallback() {
-        this.handleUnsubscribe();
+        // Platform Event 구독은 Aura에서 처리하므로 별도 정리 불필요
     }
 
     // --- Data Loading ---
@@ -117,17 +139,33 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
         this.mutedSessionMap = mutedMap;
         this.writeMutedSessionsToStorage();
 
-        return (rawSessions || []).map(s => ({
-            ...s,
-            cssClass: this.sessionFlashMap[this.normalizeId(s.sessionId)] ? 'session-item flashing' : 'session-item',
-            pinIcon: s.isPinned ? 'utility:pinned' : 'utility:pin',
-            muteIcon: s.isMuted ? 'utility:volume_off' : 'utility:volume_high',
-            formattedLastMessageTime: this.formatTime(s.lastMessageAt)
-        }));
+        const selectedId = this.normalizeId(this.currentSessionId);
+        return (rawSessions || []).map(s => {
+            const sessionId = this.normalizeId(s.sessionId);
+            const isSelected = sessionId === selectedId;
+            const baseClass = this.sessionFlashMap[sessionId] ? 'session-item flashing' : 'session-item';
+            return {
+                ...s,
+                cssClass: isSelected ? `${baseClass} selected` : baseClass,
+                pinIcon: s.isPinned ? 'utility:pinned' : 'utility:pin',
+                muteIcon: s.isMuted ? 'utility:volume_off' : 'utility:volume_high',
+                formattedLastMessageTime: this.formatTime(s.lastMessageAt)
+            };
+        });
     }
 
     refreshSessionClasses() {
-        this.sessions = this.decorateSessions(this.sessions);
+        const decorated = this.decorateSessions(this.sessions);
+        // Preserve selected state after refresh
+        const selectedId = this.normalizeId(this.currentSessionId);
+        this.sessions = decorated.map(s => {
+            const sessionId = this.normalizeId(s.sessionId);
+            const isSelected = sessionId === selectedId;
+            return {
+                ...s,
+                cssClass: isSelected ? `${s.cssClass} selected` : s.cssClass
+            };
+        });
     }
 
     async loadSessions() {
@@ -465,10 +503,12 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
         this.loadMessages();
         // Immediate mark read (initial load)
         this.markCurrentSessionRead();
+        // Update session list to show selected state
+        this.updateSessionSelection();
     }
 
     handleBack() {
-        // Return to list mode with immediate mark read (debounce protection)
+        // Close right panel chat view, but keep list view visible
         this.markCurrentSessionRead();
         this.isChatView = false;
         this.currentSessionId = null;
@@ -476,7 +516,21 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
         this.currentSessionCreatedById = null;
         this.replyDraft = null;
         this.writeActiveSessionToStorage();
-        this.loadSessions(); // Refresh list to see updates
+        this.updateSessionSelection();
+    }
+
+    updateSessionSelection() {
+        // Update session CSS classes to show selected state
+        const selectedId = this.normalizeId(this.currentSessionId);
+        this.sessions = this.sessions.map(s => {
+            const sessionId = this.normalizeId(s.sessionId);
+            const isSelected = sessionId === selectedId;
+            const baseClass = this.sessionFlashMap[sessionId] ? 'session-item flashing' : 'session-item';
+            return {
+                ...s,
+                cssClass: isSelected ? `${baseClass} selected` : baseClass
+            };
+        });
     }
 
     get canDeleteCurrentSession() {
@@ -650,7 +704,8 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
 
                 this.writeActiveSessionToStorage();
                 this.loadMessages();
-                this.loadSessions();
+                await this.loadSessions();
+                this.updateSessionSelection();
                 return;
             }
 
@@ -696,15 +751,6 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
                 if (!ok) return;
 
                 await leaveChatSession({ sessionId: this.currentSessionId });
-                this.handleBack();
-                return;
-            }
-
-            if (action === 'delete') {
-                const ok = window.confirm(this.labels.deleteConfirm);
-                if (!ok) return;
-
-                await deleteChatSession({ sessionId: this.currentSessionId });
                 this.handleBack();
                 return;
             }
@@ -969,6 +1015,11 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
         this.isLoading = true;
         this.focusChatInput();
 
+        // 메시지 전송 전에 localStorage 업데이트 (플래시 알림을 위해)
+        // 채팅방 생성 직후 첫 메시지 전송 시 플래시 알림이 발생하지 않는 문제 해결
+        // Platform Event가 발생하는 시점에 localStorage가 최신 상태여야 함
+        this.writeActiveSessionToStorage();
+
         sendMessage({
             sessionId: this.currentSessionId,
             content: content,
@@ -979,6 +1030,9 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
             .then(() => {
                 this.isLoading = false;
                 this.replyDraft = null;
+                // 메시지 전송 후 localStorage 업데이트 (플래시 알림을 위해)
+                // 채팅방 생성 직후 첫 메시지 전송 시 플래시 알림이 발생하지 않는 문제 해결
+                this.writeActiveSessionToStorage();
                 this.loadMessages();
                 this.focusChatInput();
             })
@@ -1219,132 +1273,92 @@ export default class UtilityChat extends NavigationMixin(LightningElement) {
         this.openPeopleModal('create');
     }
 
-    // --- EMP API (Real-time) ---
+    // --- Aura Event Handler (Platform Event은 Aura에서 처리) ---
 
-    handleSubscribe() {
-        if (this.subscription && this.subscription.id) {
+    handleAuraEvent(event) {
+        // Aura에서 전달된 Platform Event 데이터 처리
+        const data = event.detail?.payload;
+        if (!data) {
             return;
         }
 
-        const messageCallback = (response) => {
-            if (response?.data?.payload?.Payload__c) {
-                try {
-                    const raw = response.data.payload.Payload__c;
-                    const rawStr = String(raw);
-                    let payload;
-                    try {
-                        payload = JSON.parse(rawStr.replace(/#\\\"/g, '"').replace(/#\"/g, '"'));
-                    } catch (e) {
-                        payload = JSON.parse(rawStr);
+        try {
+            // Check participant: only process if in participant list (Platform Event org-wide broadcast)
+            const myId15 = (this.currentUserId || '').substring(0, 15);
+            const participants = data?.participantIds;
+            if (Array.isArray(participants) && participants.length) {
+                const ok = participants.some(id => String(id || '').substring(0, 15) === myId15);
+                if (!ok) {
+                    return;
+                }
+            } else {
+                // If participantIds missing, skip old event (safety)
+                return;
+            }
+
+            const sessionKey = this.normalizeId(data.sessionId);
+            const isSameSession = this.normalizeId(this.currentSessionId) === sessionKey;
+            const eventType = data?.type;
+
+            // Chat name rename: refresh list + update title immediately
+            if (eventType === 'SessionRenamed' && sessionKey) {
+                const newName = data?.newName;
+                if (newName) {
+                    if (this.isChatView && isSameSession) {
+                        this.currentSessionName = newName;
                     }
 
-                    // Check participant: only process if in participant list (Platform Event org-wide broadcast)
-                    const myId15 = (this.currentUserId || '').substring(0, 15);
-                    const participants = payload?.participantIds;
-                    if (Array.isArray(participants) && participants.length) {
-                        const ok = participants.some(id => String(id || '').substring(0, 15) === myId15);
-                        if (!ok) {
-                            return;
-                        }
-                    } else {
-                        // If participantIds missing, skip old event (safety)
-                        return;
-                    }
+                    // Update list immediately
+                    this.sessions = this.decorateSessions(
+                        (this.sessions || []).map(s =>
+                            this.normalizeId(s.sessionId) === sessionKey ? { ...s, name: newName } : s
+                        )
+                    );
+                }
 
-                    const sessionKey = this.normalizeId(payload.sessionId);
-                    const isSameSession = this.normalizeId(this.currentSessionId) === sessionKey;
-                    const eventType = payload?.type;
+                this.loadSessions();
+                return; // Skip below message load
+            }
 
-                    // Chat name rename: refresh list + update title immediately
-                    if (eventType === 'SessionRenamed' && sessionKey) {
-                        const newName = payload?.newName;
-                        if (newName) {
-                            if (this.isChatView && isSameSession) {
-                                this.currentSessionName = newName;
-                            }
+            // Read receipt: refresh unread in messages after others mark read
+            if (eventType === 'ReadReceipt' && sessionKey) {
+                // All participants (both sender + reader) should see receipt
+                // Update logic: get recent messages only on unread badge change
+                if (this.isChatView && isSameSession) {
+                    this.loadMessages();
+                } else {
+                    // List view: update session unread count
+                    this.loadSessions();
+                }
+                return;
+            }
 
-                            // Update list immediately
-                            this.sessions = this.decorateSessions(
-                                (this.sessions || []).map(s =>
-                                    this.normalizeId(s.sessionId) === sessionKey ? { ...s, name: newName } : s
-                                )
-                            );
-                        }
+            // Real-time updates:
+            // - New message + notification refresh
+            // (payload.sessionId guaranteed by participant check)
+            if (this.isChatView && this.currentSessionId) {
+                this.loadMessages();
+            } else {
+                this.loadSessions();
+            }
 
-                        this.loadSessions();
-                        return; // Skip below message load
-                    }
-
-                    // Read receipt: refresh unread in messages after others mark read
-                    if (eventType === 'ReadReceipt' && sessionKey) {
-                        // All participants (both sender + reader) should see receipt
-                        // Update logic: get recent messages only on unread badge change
-                        if (this.isChatView && isSameSession) {
-                            this.loadMessages();
-                        } else {
-                            // List view: update session unread count
-                            this.loadSessions();
-                        }
-                        return;
-                    }
-
-                    // Real-time updates:
-                    // - New message + notification refresh
-                    // (payload.sessionId guaranteed by participant check)
-                    if (this.isChatView && this.currentSessionId) {
-                        this.loadMessages();
-                    } else {
-                        this.loadSessions();
-                    }
-
-                    // Notification flash: non-sender message + current session not open
-                    const senderId15 = (payload.senderId || '').substring(0, 15);
-                    if (senderId15 && senderId15 !== myId15 && sessionKey) {
-                        // Mute check: if muted, skip flash
-                        if (this.mutedSessionMap && this.mutedSessionMap[sessionKey]) {
-                            return;
-                        }
-                        if (!(this.isChatView && isSameSession)) {
-                            this.sessionFlashMap = { ...this.sessionFlashMap, [sessionKey]: true };
-                            this.refreshSessionClasses();
-                        } else {
-                            this.clearSessionFlash(sessionKey);
-                        }
-                    }
-                } catch (e) {
-                    console.error('JSON Parse Error', e);
+            // Notification flash: non-sender message + current session not open
+            const senderId15 = (data.senderId || '').substring(0, 15);
+            if (senderId15 && senderId15 !== myId15 && sessionKey) {
+                // Mute check: if muted, skip flash
+                if (this.mutedSessionMap && this.mutedSessionMap[sessionKey]) {
+                    return;
+                }
+                if (!(this.isChatView && isSameSession)) {
+                    this.sessionFlashMap = { ...this.sessionFlashMap, [sessionKey]: true };
+                    this.refreshSessionClasses();
+                } else {
+                    this.clearSessionFlash(sessionKey);
                 }
             }
-        };
-
-        subscribe(this.channelName, -1, messageCallback)
-            .then(response => {
-                this.subscription = response;
-            })
-            .catch(error => {
-                console.error('EMP API Subscribe Error', error);
-                // 팝업 창에서 구독 실패 시 재시도
-                setTimeout(() => {
-                    if (!this.subscription || !this.subscription.id) {
-                        this.handleSubscribe();
-                    }
-                }, 2000);
-            });
-
-        onError(error => {
-            console.error('EMP API Error', error);
-            // 에러 발생 시 재구독 시도
-            if (this.subscription && this.subscription.id) {
-                this.handleUnsubscribe();
-            }
-            setTimeout(() => {
-                this.handleSubscribe();
-            }, 3000);
-        });
-    }
-
-    handleUnsubscribe() {
-        unsubscribe(this.subscription, () => {});
+        } catch (e) {
+            console.error('Aura Event Processing Error', e);
+        }
     }
 
     writeActiveSessionToStorage() {

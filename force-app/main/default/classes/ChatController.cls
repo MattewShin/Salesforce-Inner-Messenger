@@ -317,6 +317,7 @@ public with sharing class ChatController {
     // - before: if null, returns latest limitSize messages
     // - if before is set, returns limitSize messages before that timestamp
     // Returns ordered by CreatedDate ASC (oldest first)
+    // Includes both active messages and archived messages if needed
     @AuraEnabled
     public static List<MessageWrapper> getMessagesPaged(Id sessionId, Datetime before, Integer limitSize) {
         if (sessionId == null) return new List<MessageWrapper>();
@@ -375,7 +376,157 @@ public with sharing class ChatController {
             Integer readByOthers = Math.max(otherCount - unreadByOthers, 0);
             results.add(new MessageWrapper(msg, unreadByOthers, readByOthers, otherCount));
         }
+        
+        // If we need more messages and there are archived messages, fetch from archive
+        if (results.size() < lim && before != null) {
+            List<MessageWrapper> archivedMessages = getArchivedMessages(sessionId, before, lim - results.size());
+            if (!archivedMessages.isEmpty()) {
+                // Merge archived messages (they are already in ASC order)
+                results.addAll(archivedMessages);
+            }
+        }
+        
         return results;
+    }
+    
+    /**
+     * Get archived messages from JSON chunks
+     * Returns messages before the specified datetime, ordered by CreatedDate DESC
+     */
+    private static List<MessageWrapper> getArchivedMessages(Id sessionId, Datetime before, Integer limitSize) {
+        List<MessageWrapper> results = new List<MessageWrapper>();
+        
+        try {
+            // Get archive chunks that contain messages before the specified date
+            List<Inner_Chat_Message_Archive__c> chunks = [
+                SELECT Messages_JSON__c, First_Message_Date__c, Last_Message_Date__c, Chunk_Index__c
+                FROM Inner_Chat_Message_Archive__c
+                WHERE Inner_Chat_Session__c = :sessionId
+                  AND First_Message_Date__c < :before
+                ORDER BY Chunk_Index__c DESC
+            ];
+            
+            List<Map<String, Object>> allArchivedMessages = new List<Map<String, Object>>();
+            
+            // Parse JSON from chunks and collect messages
+            for (Inner_Chat_Message_Archive__c chunk : chunks) {
+                if (String.isBlank(chunk.Messages_JSON__c)) continue;
+                
+                try {
+                    List<Object> messages = (List<Object>) JSON.deserializeUntyped(chunk.Messages_JSON__c);
+                    for (Object msgObj : messages) {
+                        Map<String, Object> msg = (Map<String, Object>) msgObj;
+                        String createdDateStr = (String) msg.get('createdDate');
+                        if (String.isNotBlank(createdDateStr)) {
+                            DateTime msgDate = DateTime.parse(createdDateStr);
+                            if (msgDate < before) {
+                                allArchivedMessages.add(msg);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    System.debug('Error parsing archive chunk JSON: ' + e.getMessage());
+                    continue;
+                }
+            }
+            
+            // Sort by createdDate DESC (newest first)
+            // Convert to list with DateTime for sorting
+            List<ArchiveMessageSortHelper> sortHelpers = new List<ArchiveMessageSortHelper>();
+            for (Map<String, Object> msgData : allArchivedMessages) {
+                String createdDateStr = (String) msgData.get('createdDate');
+                if (String.isNotBlank(createdDateStr)) {
+                    try {
+                        DateTime msgDate = DateTime.parse(createdDateStr);
+                        sortHelpers.add(new ArchiveMessageSortHelper(msgData, msgDate));
+                    } catch (Exception e) {
+                        // Skip messages with invalid dates
+                        continue;
+                    }
+                }
+            }
+            
+            // Sort by date DESC (newest first)
+            sortHelpers.sort(new ArchiveMessageSortHelperComparator());
+            
+            // Convert to MessageWrapper (limit to requested size)
+            Integer count = Math.min(limitSize, sortHelpers.size());
+            for (Integer i = 0; i < count; i++) {
+                MessageWrapper wrapper = createMessageWrapperFromArchive(sortHelpers[i].msgData);
+                if (wrapper != null) {
+                    results.add(wrapper);
+                }
+            }
+            
+        } catch (Exception e) {
+            System.debug('Error retrieving archived messages: ' + e.getMessage());
+        }
+        
+        return results;
+    }
+    
+    /**
+     * Create MessageWrapper from archived JSON data
+     */
+    private static MessageWrapper createMessageWrapperFromArchive(Map<String, Object> msgData) {
+        try {
+            MessageWrapper wrapper = new MessageWrapper();
+            
+            // Parse basic fields
+            String idStr = (String) msgData.get('id');
+            wrapper.id = idStr != null ? idStr : null;
+            wrapper.content = (String) msgData.get('content');
+            
+            String senderIdStr = (String) msgData.get('senderId');
+            wrapper.senderId = senderIdStr != null ? senderIdStr : null;
+            wrapper.senderName = (String) msgData.get('senderName');
+            
+            String createdDateStr = (String) msgData.get('createdDate');
+            if (String.isNotBlank(createdDateStr)) {
+                wrapper.createdDate = DateTime.parse(createdDateStr);
+            }
+            
+            wrapper.isMine = (wrapper.senderId == UserInfo.getUserId());
+            
+            // Reply information
+            String replyToIdStr = (String) msgData.get('replyToId');
+            wrapper.replyToId = replyToIdStr != null ? replyToIdStr : null;
+            wrapper.replyToPreview = (String) msgData.get('replyPreview');
+            
+            // Note: Archived messages don't have attachments or detailed unread counts
+            wrapper.unreadByOthers = 0;
+            wrapper.readByOthers = 0;
+            wrapper.otherParticipantCount = 0;
+            
+            return wrapper;
+        } catch (Exception e) {
+            System.debug('Error creating MessageWrapper from archive: ' + e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Helper class for sorting archived messages
+     */
+    private class ArchiveMessageSortHelper {
+        Map<String, Object> msgData;
+        DateTime createdDate;
+        
+        ArchiveMessageSortHelper(Map<String, Object> msgData, DateTime createdDate) {
+            this.msgData = msgData;
+            this.createdDate = createdDate;
+        }
+    }
+    
+    /**
+     * Comparator for sorting archived messages by createdDate DESC
+     */
+    private class ArchiveMessageSortHelperComparator implements Comparator<ArchiveMessageSortHelper> {
+        public Integer compare(ArchiveMessageSortHelper h1, ArchiveMessageSortHelper h2) {
+            if (h1.createdDate > h2.createdDate) return -1;
+            if (h1.createdDate < h2.createdDate) return 1;
+            return 0;
+        }
     }
 
     // Get all messages for a chat session (for export/download)
@@ -698,15 +849,10 @@ public with sharing class ChatController {
             ];
 
             // If no remaining participants, delete session and messages
+            // Use without sharing helper to bypass permission checks for deletion
             if (remainParts.isEmpty()) {
-                List<Inner_Chat_Message__c> msgs = [
-                    SELECT Id
-                    FROM Inner_Chat_Message__c
-                    WHERE Inner_Chat_Session__c = :sessionId
-                ];
-                if (!msgs.isEmpty()) delete msgs;
-
-                delete new Inner_Chat_Session__c(Id = sessionId);
+                ChatControllerHelper helper = new ChatControllerHelper();
+                helper.deleteSessionAndMessages(sessionId);
                 return;
             }
 
@@ -976,6 +1122,13 @@ public with sharing class ChatController {
         @AuraEnabled public String replyToSenderName;
         @AuraEnabled public String replyToPreview;
 
+        // Default constructor for archive messages
+        public MessageWrapper() {
+            this.unreadByOthers = 0;
+            this.readByOthers = 0;
+            this.otherParticipantCount = 0;
+        }
+
         public MessageWrapper(Inner_Chat_Message__c m) {
             this(m, 0);
         }
@@ -1050,6 +1203,30 @@ public with sharing class ChatController {
             this.isPinned = (p.Is_Pinned__c == true);
             this.isMuted = (p.Is_Muted__c == true);
             this.isMe = (p.User__c == UserInfo.getUserId());
+        }
+    }
+
+    // Helper class for deletion operations that require without sharing context
+    // This allows deletion of chat sessions and messages even when user doesn't have delete permissions
+    private without sharing class ChatControllerHelper {
+        public void deleteSessionAndMessages(Id sessionId) {
+            try {
+                List<Inner_Chat_Message__c> msgs = [
+                    SELECT Id
+                    FROM Inner_Chat_Message__c
+                    WHERE Inner_Chat_Session__c = :sessionId
+                ];
+                if (!msgs.isEmpty()) {
+                    delete msgs;
+                }
+
+                delete new Inner_Chat_Session__c(Id = sessionId);
+            } catch (Exception e) {
+                // Log error but don't throw - user has successfully left the chat
+                System.debug('Error deleting session and messages: ' + e.getMessage());
+                // Even if deletion fails, the user has left successfully
+                // The orphaned session will remain but won't be visible to anyone
+            }
         }
     }
 }

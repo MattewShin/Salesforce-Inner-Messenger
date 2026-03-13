@@ -1679,13 +1679,6 @@ export default class UtilityRequest extends NavigationMixin(LightningElement) {
             return;
         }
         
-        // 중복 호출 방지
-        if (this.lastOmniStatus === 'OnBreak') {
-            // eslint-disable-next-line no-console
-            console.log('Omni status is already OnBreak, skipping...');
-            return;
-        }
-        
         // 디바운싱: 너무 빠른 연속 호출 방지 (300ms)
         const now = Date.now();
         const DEBOUNCE_MS = 300;
@@ -1700,19 +1693,129 @@ export default class UtilityRequest extends NavigationMixin(LightningElement) {
         }
         
         try {
-            // 🔑 핵심: 실제 작동하는 코드와 동일한 방식으로 이벤트 디스패치
-            // 참고: 실제 작동하는 코드는 bubbles/composed 옵션 없이도 작동함
+            // 🔑 핵심: Visualforce 페이지가 이벤트를 받을 수 있도록 bubbles/composed 옵션 사용
+            // LWC의 Shadow DOM에서 이벤트가 외부로 전파되려면 composed: true가 필수
             const selectedEvent = new CustomEvent('selectedstatus', {
                 detail: {
                     statusId: this.onBreakId  // OnBreak 상태 (15자리 ID)
-                }
+                },
+                bubbles: true,
+                composed: true
             });
+            
+            // 이벤트를 여러 방법으로 디스패치 시도
             this.dispatchEvent(selectedEvent);
+            
+            // document 레벨로도 디스패치 시도 (Visualforce 페이지가 받을 수 있도록)
+            try {
+                document.dispatchEvent(new CustomEvent('selectedstatus', {
+                    detail: {
+                        statusId: this.onBreakId
+                    },
+                    bubbles: true,
+                    composed: true
+                }));
+                // eslint-disable-next-line no-console
+                console.log('[LWC] Also dispatched OnBreak to document');
+            } catch (e) {
+                // eslint-disable-next-line no-console
+                console.warn('[LWC] Failed to dispatch OnBreak to document:', e);
+            }
+            
+            // window 레벨로도 디스패치 시도
+            try {
+                if (window.dispatchEvent) {
+                    window.dispatchEvent(new CustomEvent('selectedstatus', {
+                        detail: {
+                            statusId: this.onBreakId
+                        },
+                        bubbles: true,
+                        composed: true
+                    }));
+                    // eslint-disable-next-line no-console
+                    console.log('[LWC] Also dispatched OnBreak to window');
+                }
+            } catch (e) {
+                // eslint-disable-next-line no-console
+                console.warn('[LWC] Failed to dispatch OnBreak to window:', e);
+            }
+            
+            // Visualforce 페이지의 함수를 직접 호출 시도 (모든 레벨에서)
+            try {
+                // window.parent에서 직접 호출
+                if (window.parent && window.parent !== window) {
+                    if (typeof window.parent.setServicePresenceStatus === 'function') {
+                        window.parent.setServicePresenceStatus(this.onBreakId);
+                        // eslint-disable-next-line no-console
+                        console.log('[LWC] Directly called window.parent.setServicePresenceStatus');
+                    } else {
+                        // eslint-disable-next-line no-console
+                        console.warn('[LWC] window.parent.setServicePresenceStatus is not a function');
+                    }
+                }
+            } catch (e) {
+                // eslint-disable-next-line no-console
+                console.warn('[LWC] Failed to call window.parent.setServicePresenceStatus:', e);
+            }
+            
+            try {
+                // window.top에서 직접 호출
+                if (window.top && window.top !== window && window.top !== window.parent) {
+                    if (typeof window.top.setServicePresenceStatus === 'function') {
+                        window.top.setServicePresenceStatus(this.onBreakId);
+                        // eslint-disable-next-line no-console
+                        console.log('[LWC] Directly called window.top.setServicePresenceStatus');
+                    } else {
+                        // eslint-disable-next-line no-console
+                        console.warn('[LWC] window.top.setServicePresenceStatus is not a function');
+                    }
+                }
+            } catch (e) {
+                // eslint-disable-next-line no-console
+                console.warn('[LWC] Failed to call window.top.setServicePresenceStatus:', e);
+            }
+            
+            // 모든 iframe에서 함수 호출 시도
+            try {
+                if (window.frames && window.frames.length > 0) {
+                    for (let i = 0; i < window.frames.length; i++) {
+                        try {
+                            if (window.frames[i] && typeof window.frames[i].setServicePresenceStatus === 'function') {
+                                window.frames[i].setServicePresenceStatus(this.onBreakId);
+                                // eslint-disable-next-line no-console
+                                console.log('[LWC] Directly called window.frames[' + i + '].setServicePresenceStatus');
+                            }
+                        } catch (e) {
+                            // eslint-disable-next-line no-console
+                            console.warn('[LWC] Failed to call window.frames[' + i + '].setServicePresenceStatus:', e);
+                        }
+                    }
+                }
+            } catch (e) {
+                // eslint-disable-next-line no-console
+                console.warn('[LWC] Failed to call setServicePresenceStatus on window.frames:', e);
+            }
+            
             // eslint-disable-next-line no-console
             console.log('[LWC] Dispatched OnBreak status event:', this.onBreakId);
             
             this.lastOmniStatus = 'OnBreak';
             this.lastStatusChangeTimestamp = now;
+            
+            // 추가 확인: 약간의 지연 후 다시 한 번 시도 (Visualforce 페이지가 준비되지 않았을 수 있음)
+            setTimeout(() => {
+                // Visualforce 페이지의 함수를 다시 한 번 직접 호출
+                try {
+                    if (window.parent && typeof window.parent.setServicePresenceStatus === 'function') {
+                        window.parent.setServicePresenceStatus(this.onBreakId);
+                        // eslint-disable-next-line no-console
+                        console.log('[LWC] Retry: Directly called window.parent.setServicePresenceStatus after delay');
+                    }
+                } catch (e) {
+                    // eslint-disable-next-line no-console
+                    console.warn('[LWC] Retry failed:', e);
+                }
+            }, 1000); // 1초 후 재시도
         } catch (e) {
             // eslint-disable-next-line no-console
             console.error('[LWC] Failed to dispatch Omni OnBreak event:', e);

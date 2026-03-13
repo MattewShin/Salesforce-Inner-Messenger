@@ -1,34 +1,14 @@
 <template>
     <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <template lwc:if={isChatView}>
-                <lightning-button-icon icon-name="utility:back" variant="bare" onclick={handleBack} alternative-text={labels.backAlt}></lightning-button-icon>
-                <span class="slds-text-heading_small slds-truncate slds-m-horizontal_small" style="flex:1;" title={currentSessionName}>{currentSessionName}</span>
-                <lightning-button-menu
-                    class="chat-header-menu"
-                    alternative-text={labels.chatMenuAlt}
-                    menu-alignment="right"
-                    onselect={handleChatMenuSelect}
-                    icon-size="x-small">
-                    <lightning-menu-item value="participants" label={labels.menuParticipants}></lightning-menu-item>
-                    <lightning-menu-item value="invite" label={labels.menuInvite}></lightning-menu-item>
-                    <lightning-menu-item value="rename" label={labels.menuRename}></lightning-menu-item>
-                    <lightning-menu-item value="download" label={labels.menuDownload}></lightning-menu-item>
-                    <lightning-menu-item value="leave" label={labels.menuLeave}></lightning-menu-item>
-                    <template lwc:if={canDeleteCurrentSession}>
-                        <lightning-menu-item value="delete" label={labels.menuDelete}></lightning-menu-item>
-                    </template>
-                </lightning-button-menu>
-            </template>
-            <template lwc:else>
+        <!-- Left Panel: Chat List -->
+        <div class={leftPanelClass}>
+            <!-- Left Header -->
+            <div class="left-header">
                 <span class="slds-text-heading_small">{labels.headerTitle}</span>
                 <lightning-button-icon icon-name="utility:add" variant="border-filled" onclick={openNewChatModal} alternative-text={labels.newChatAlt}></lightning-button-icon>
-            </template>
-        </div>
-
-        <!-- Session List View -->
-        <template lwc:if={isListView}>
+            </div>
+            
+            <!-- Session List -->
             <div class="session-list">
                 <template for:each={sessions} for:item="session">
                     <div
@@ -83,12 +63,33 @@
                     </div>
                 </template>
             </div>
-        </template>
+        </div>
 
-        <!-- Chat View -->
+        <!-- Right Panel: Chat View -->
         <template lwc:if={isChatView}>
-            <div class={chatAreaClass}>
-                <div class="messages" lwc:ref="messageContainer" onscroll={handleMessagesScroll}>
+            <div class="right-panel">
+                <!-- Right Header -->
+                <div class="right-header">
+                    <template lwc:if={hasSessions}>
+                        <lightning-button-icon icon-name={togglePanelIcon} variant="bare" onclick={handleToggleLeftPanel} alternative-text={togglePanelAlt}></lightning-button-icon>
+                    </template>
+                    <span class="slds-text-heading_small slds-truncate slds-m-horizontal_small" style="flex:1;" title={currentSessionName}>{currentSessionName}</span>
+                    <lightning-button-menu
+                        class="chat-header-menu"
+                        alternative-text={labels.chatMenuAlt}
+                        menu-alignment="right"
+                        onselect={handleChatMenuSelect}
+                        icon-size="x-small">
+                        <lightning-menu-item value="participants" label={labels.menuParticipants}></lightning-menu-item>
+                        <lightning-menu-item value="invite" label={labels.menuInvite}></lightning-menu-item>
+                        <lightning-menu-item value="rename" label={labels.menuRename}></lightning-menu-item>
+                        <lightning-menu-item value="download" label={labels.menuDownload}></lightning-menu-item>
+                        <lightning-menu-item value="leave" label={labels.menuLeave}></lightning-menu-item>
+                    </lightning-button-menu>
+                </div>
+                
+                <div class={chatAreaClass}>
+                    <div class="messages" lwc:ref="messageContainer" onscroll={handleMessagesScroll}>
                     <template for:each={messages} for:item="msg">
                         <!-- Message Wrapper for layout -->
                         <div key={msg.id} class={msg.wrapperClass} data-msg-id={msg.id}>
@@ -237,9 +238,9 @@
                             </template>
                         </div>
                     </template>
-                </div>
+                    </div>
                 
-                <div class="input-area">
+                    <div class="input-area">
                     <template lwc:if={isReplying}>
                         <div class="reply-draft">
                             <div class="reply-draft-left">
@@ -284,6 +285,16 @@
                     </lightning-textarea>
                     <lightning-button-icon icon-name="utility:send" variant="brand" onclick={handleSendMessage} disabled={isLoading}></lightning-button-icon>
                     </div>
+                </div>
+                </div>
+            </div>
+        </template>
+        <template lwc:else>
+            <!-- Empty Right Panel when no chat selected -->
+            <div class="right-panel empty">
+                <div class="empty-chat-message">
+                    <lightning-icon icon-name="standard:messaging_session" size="large" class="empty-icon"></lightning-icon>
+                    <p class="slds-text-heading_small slds-text-color_weak">{labels.selectChatMessage}</p>
                 </div>
             </div>
         </template>

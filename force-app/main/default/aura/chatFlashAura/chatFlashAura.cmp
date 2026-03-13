@@ -1,12 +1,13 @@
-<aura:component implements="flexipage:availableForAllPageTypes" access="global">
+<aura:component implements="flexipage:availableForAllPageTypes,lightning:isUrlAddressable" access="global">
     <!--
         목적:
-        - Platform Event(Chat_Notification__e)�?구독
-        - ??메시지 ?�신 ??UtilityChat ?�틸리티 ?�이?�을 lightning:utilityBarAPI�??�이?�이???�래??
+        - Platform Event(Chat_Notification__e) 구독
+        - 새 메시지 수신 시 UtilityChat 유틸리티 아이콘을 lightning:utilityBarAPI로 깜빡이게 함
+        - utilityChat LWC를 포함하여 통합된 채팅 UI 제공
 
         참고:
-        - UtilityChat(LWC)?� localStorage???�재 보고 ?�는 sessionId(15?�리)?� isChatView�?기록
-        - ?�기???�당 값을 ?�어 "같�? 방을 보고 ?�으�??�래????????구현
+        - UtilityChat(LWC)의 localStorage에 현재 보고 있는 sessionId(15자리)와 isChatView를 기록
+        - 이를 읽어 "같은 방을 보고 있으면 플래시 안 함"을 구현
     -->
 
     <aura:attribute name="intervalId" type="Object" />
@@ -14,25 +15,38 @@
     <aura:attribute name="flashSession15" type="String" />
     <aura:attribute name="lastDebug" type="String" default="-" />
     <aura:attribute name="subscription" type="Object" />
-    <!-- ?�틸리티 ?�이??ID 캐시/?�시??구독 ?�정?�용 -->
+    <!-- 유틸리티 아이콘 ID 캐시/재시도 구독 재정용 -->
     <aura:attribute name="cachedUtilityId" type="String" />
     <aura:attribute name="hasEmpErrorHandler" type="Boolean" default="false" />
     <aura:attribute name="isSubscribing" type="Boolean" default="false" />
     <aura:attribute name="resubscribeTimer" type="Object" />
 
-    <!-- UtilityChat ?�틸리티???�널 ?�더 ?�벨(Setup > App Manager > Utility Items?�서 보이???�벨) -->
-    <aura:attribute name="targetUtilityLabel" type="String" default="InnerChat" />
+    <!-- UtilityChat 유틸리티의 패널 레이블(Setup > App Manager > Utility Items에서 보이는 레이블) -->
+    <!-- 실제 Utility Bar에 표시되는 이름과 일치해야 함 -->
+    <aura:attribute name="targetUtilityLabel" type="String" default="Inner Chat" />
 
     <!-- Platform Event 채널 -->
     <aura:attribute name="channel" type="String" default="/event/Inner_Chat_Notification__e" />
 
+    <!-- Utility Bar API 및 EMP API -->
     <lightning:utilityBarAPI aura:id="utilitybar" />
     <lightning:empApi aura:id="empApi" />
 
     <aura:handler name="init" value="{!this}" action="{!c.doInit}" />
 
-    <!-- UI??최소?? 백그?�운???�행??목적 -->
-    <div class="slds-p-around_small slds-text-color_weak slds-text-body_small">
+    <!-- LWC 컴포넌트 포함: 전체 화면을 차지하도록 설정 -->
+    <div style="height: 100%; width: 100%; position: relative;">
+        <c:utilityChat 
+            aura:id="utilityChatLWC"
+            height="{!v.height}"
+            width="{!v.width}">
+        </c:utilityChat>
+    </div>
+
+    <!-- Flash 기능은 백그라운드에서 실행되므로 UI는 숨김 (디버그용으로 필요시 주석 해제) -->
+    <!--
+    <div class="slds-p-around_small slds-text-color_weak slds-text-body_small" style="display: none;">
         ChatFlashAura running... {!v.lastDebug}
     </div>
+    -->
 </aura:component>

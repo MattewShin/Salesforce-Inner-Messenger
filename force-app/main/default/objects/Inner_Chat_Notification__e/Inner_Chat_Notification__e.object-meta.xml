@@ -3,6 +3,5 @@
     <deploymentStatus>Deployed</deploymentStatus>
     <eventType>HighVolume</eventType>
     <label>Chat Notification</label>
-    <pluralLabel>Chat Notifications</pluralLabel>
     <publishBehavior>PublishAfterCommit</publishBehavior>
 </CustomObject>

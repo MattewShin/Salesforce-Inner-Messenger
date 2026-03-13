@@ -1,0 +1,300 @@
+<template>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <span class="slds-text-heading_small">쪽지</span>
+            <lightning-button-icon 
+                icon-name="utility:add" 
+                variant="border-filled" 
+                onclick={openComposeModal} 
+                alternative-text="새 쪽지 작성"
+                title="새 쪽지 작성">
+            </lightning-button-icon>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content-area">
+            <!-- Sidebar: Note List -->
+            <div class="sidebar">
+                <!-- View Tabs -->
+                <div class="view-tabs">
+                    <button 
+                        class={receivedTabClass}
+                        data-view="received"
+                        onclick={handleViewChange}>
+                        받은 쪽지함
+                        <template lwc:if={isReceivedView}>
+                            <template lwc:if={hasUnreadCount}>
+                                <span class="unread-badge">{unreadCount}</span>
+                            </template>
+                        </template>
+                    </button>
+                    <button 
+                        class={sentTabClass}
+                        data-view="sent"
+                        onclick={handleViewChange}>
+                        보낸 쪽지함
+                    </button>
+                </div>
+
+                <!-- Filter (only for received view) -->
+                <template lwc:if={isReceivedView}>
+                    <div class="filter-section">
+                        <lightning-input 
+                            type="checkbox" 
+                            label="읽지 않은 쪽지만"
+                            onchange={handleUnreadFilter}
+                            checked={unreadFilterChecked}>
+                        </lightning-input>
+                    </div>
+                </template>
+
+                <!-- Note List -->
+                <div class="note-list">
+                    <template lwc:if={isLoadingNotes}>
+                        <div class="slds-p-around_medium slds-text-align_center">
+                            <lightning-spinner size="small"></lightning-spinner>
+                        </div>
+                    </template>
+                    <template lwc:else>
+                        <template for:each={currentNotes} for:item="note">
+                            <div 
+                                key={note.id}
+                                class={note.itemClass}
+                                onclick={handleNoteSelect}
+                                data-id={note.id}>
+                                <div class="note-item-header">
+                                    <template lwc:if={note.isImportant}>
+                                        <lightning-icon icon-name="utility:favorite" size="x-small" class="important-icon"></lightning-icon>
+                                    </template>
+                                    <span class="note-subject slds-truncate" title={note.subject}>{note.subject}</span>
+                                </div>
+                                <div class="note-item-meta">
+                                    <span class="note-sender">
+                                        <template lwc:if={isReceivedView}>
+                                            {note.senderName}
+                                        </template>
+                                        <template lwc:else>
+                                            {note.recipientName}
+                                        </template>
+                                    </span>
+                                    <span class="note-date">
+                                        <lightning-formatted-date-time value={note.createdDate} hour="2-digit" minute="2-digit"></lightning-formatted-date-time>
+                                    </span>
+                                </div>
+                                <template lwc:if={note.showUnreadIndicator}>
+                                    <span class="unread-indicator"></span>
+                                </template>
+                            </div>
+                        </template>
+                        <template lwc:if={isNotesEmpty}>
+                            <div class="slds-p-around_medium slds-text-align_center slds-text-color_weak">
+                                <template lwc:if={isReceivedView}>
+                                    받은 쪽지가 없습니다.
+                                </template>
+                                <template lwc:else>
+                                    보낸 쪽지가 없습니다.
+                                </template>
+                            </div>
+                        </template>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Main: Note Detail -->
+            <div class="main-content">
+                <template lwc:if={hasSelectedNote}>
+                    <div class="note-detail">
+                        <!-- Note Header -->
+                        <div class="note-detail-header">
+                            <div class="note-detail-title-section">
+                                <template lwc:if={selectedNote.isImportant}>
+                                    <lightning-icon icon-name="utility:favorite" size="small" class="important-icon"></lightning-icon>
+                                </template>
+                                <h2 class="note-detail-subject">{selectedNote.subject}</h2>
+                            </div>
+                            <div class="note-detail-actions">
+                                <template lwc:if={isReceivedView}>
+                                    <lightning-button-icon
+                                        icon-name={importantIconName}
+                                        variant="bare"
+                                        alternative-text="중요 표시"
+                                        title="중요 표시"
+                                        onclick={handleToggleImportant}
+                                        disabled={isLoading}>
+                                    </lightning-button-icon>
+                                </template>
+                                <lightning-button-icon
+                                    icon-name="utility:delete"
+                                    variant="bare"
+                                    alternative-text="삭제"
+                                    title="삭제"
+                                    onclick={handleDeleteNote}
+                                    disabled={isLoading}>
+                                </lightning-button-icon>
+                            </div>
+                        </div>
+
+                        <!-- Note Meta -->
+                        <div class="note-detail-meta">
+                            <div class="note-detail-meta-row">
+                                <span class="meta-label">보낸 사람:</span>
+                                <span class="meta-value">{selectedNote.senderName}</span>
+                            </div>
+                            <div class="note-detail-meta-row">
+                                <span class="meta-label">받는 사람:</span>
+                                <span class="meta-value">{selectedNote.recipientName}</span>
+                            </div>
+                            <div class="note-detail-meta-row">
+                                <span class="meta-label">보낸 시간:</span>
+                                <span class="meta-value">
+                                    <lightning-formatted-date-time value={selectedNote.createdDate} hour="2-digit" minute="2-digit"></lightning-formatted-date-time>
+                                </span>
+                            </div>
+                            <template lwc:if={hasReadAt}>
+                                <div class="note-detail-meta-row">
+                                    <span class="meta-label">읽은 시간:</span>
+                                    <span class="meta-value">
+                                        <lightning-formatted-date-time value={selectedNote.readAt} hour="2-digit" minute="2-digit"></lightning-formatted-date-time>
+                                    </span>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- Note Content -->
+                        <div class="note-detail-content">
+                            <template lwc:if={selectedNote.content}>
+                                <p class="note-content-text">{selectedNote.content}</p>
+                            </template>
+                            <template lwc:else>
+                                <p class="note-content-empty slds-text-color_weak">내용이 없습니다.</p>
+                            </template>
+                        </div>
+
+                        <!-- Attachment -->
+                        <template lwc:if={selectedNote.attachment}>
+                            <div class="note-detail-attachment">
+                                <button
+                                    class="attachment-button"
+                                    onclick={handlePreviewFile}
+                                    data-id={selectedNote.attachment.docId}
+                                    type="button">
+                                    <lightning-icon icon-name="doctype:attachment" size="small"></lightning-icon>
+                                    <span class="attachment-title">{selectedNote.attachment.title}</span>
+                                    <template lwc:if={selectedNote.attachment.extension}>
+                                        <span class="attachment-ext">.{selectedNote.attachment.extension}</span>
+                                    </template>
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <template lwc:else>
+                    <div class="note-detail-empty">
+                        <lightning-icon icon-name="utility:message" size="large" class="empty-icon"></lightning-icon>
+                        <p class="slds-text-color_weak">쪽지를 선택해주세요.</p>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Compose Modal -->
+        <template lwc:if={isComposeModalOpen}>
+            <div class="modal-overlay" onclick={closeComposeModal}>
+                <div class="modal-content compose-modal" onclick={stopPropagation}>
+                    <div class="modal-header">
+                        <h2 class="slds-text-heading_medium">새 쪽지 작성</h2>
+                        <lightning-button-icon
+                            icon-name="utility:close"
+                            variant="bare"
+                            alternative-text="닫기"
+                            onclick={closeComposeModal}>
+                        </lightning-button-icon>
+                    </div>
+                    <div class="modal-body">
+                        <!-- Recipient Selection -->
+                        <div class="slds-form-element slds-m-bottom_small">
+                            <label class="slds-form-element__label">받는 사람</label>
+                            <div class="slds-form-element__control">
+                                <template lwc:if={composeRecipientName}>
+                                    <div class="recipient-selected">
+                                        <span>{composeRecipientName}</span>
+                                        <lightning-button-icon
+                                            icon-name="utility:close"
+                                            variant="bare"
+                                            size="x-small"
+                                            alternative-text="제거"
+                                            onclick={handleClearRecipient}>
+                                        </lightning-button-icon>
+                                    </div>
+                                </template>
+                                <template lwc:else>
+                                    <lightning-input
+                                        type="search"
+                                        variant="label-hidden"
+                                        placeholder="이름 검색..."
+                                        onchange={handleRecipientSearch}>
+                                    </lightning-input>
+                                    <template lwc:if={userSearchResults.length}>
+                                        <ul class="user-search-results">
+                                            <template for:each={userSearchResults} for:item="user">
+                                                <li 
+                                                    key={user.Id}
+                                                    class="user-search-result"
+                                                    onclick={handleRecipientSelect}
+                                                    data-id={user.Id}
+                                                    data-name={user.Name}>
+                                                    <span>{user.Name}</span>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </template>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- Subject -->
+                        <div class="slds-form-element slds-m-bottom_small">
+                            <label class="slds-form-element__label">제목 <span class="slds-required">*</span></label>
+                            <div class="slds-form-element__control">
+                                <lightning-input
+                                    type="text"
+                                    variant="label-hidden"
+                                    placeholder="제목을 입력하세요"
+                                    value={composeSubject}
+                                    onchange={handleSubjectChange}
+                                    max-length="255">
+                                </lightning-input>
+                            </div>
+                        </div>
+
+                        <!-- Content -->
+                        <div class="slds-form-element slds-m-bottom_small">
+                            <label class="slds-form-element__label">내용</label>
+                            <div class="slds-form-element__control">
+                                <lightning-textarea
+                                    variant="label-hidden"
+                                    placeholder="내용을 입력하세요 (Ctrl+V: 이미지 붙여넣기)"
+                                    value={composeContent}
+                                    onchange={handleContentChange}
+                                    onpaste={handlePaste}
+                                    max-length="131072"
+                                    rows="8">
+                                </lightning-textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <lightning-button label="취소" onclick={closeComposeModal} class="slds-m-right_small"></lightning-button>
+                        <lightning-button 
+                            label="전송" 
+                            variant="brand" 
+                            onclick={handleSendNote}
+                            disabled={isSendButtonDisabled}>
+                        </lightning-button>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</template>

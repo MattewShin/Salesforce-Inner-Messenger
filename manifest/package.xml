@@ -6,7 +6,6 @@
         <members>ChatController</members>
         <members>ChatController_Test</members>
         <members>ChatMessageCleanupScheduler</members>
-        <members>ChatMessageCleanupScheduler_Test</members>
         <members>ChatMessageCleanupBatch</members>
         <members>ChatMessageCleanupBatch_Test</members> 
         <name>ApexClass</name>
@@ -52,6 +51,13 @@
         <members>OmniPresenceHelper_Test</members>
         <name>ApexClass</name>
     </types>
+    
+    <!-- Note functionality -->
+    <types>
+        <members>NoteController</members>
+        <members>NoteController_Test</members>
+        <name>ApexClass</name>
+    </types>
 
     <!-- ===== UI COMPONENTS ===== -->
     <!-- Aura Components -->
@@ -65,6 +71,7 @@
     <types>
         <members>utilityChat</members>
         <members>utilityRequest</members>
+        <members>utilityNote</members>
         <members>managerDashboard</members>
         <name>LightningComponentBundle</name>
     </types>
@@ -87,10 +94,17 @@
         <members>Work_Time__c</members>
         <name>CustomObject</name>
     </types>
+    
+    <!-- Note management -->
+    <types>
+        <members>Inner_Note__c</members>
+        <name>CustomObject</name>
+    </types>
 
     <!-- ===== PERMISSION SETS ===== -->
     <types>
         <members>Internal_Chat_Permission_Set</members>
+        <members>Internal_Note_Permission_Set</members>
         <members>Leave_Break_Employee_Permission_Set</members>
         <members>Leave_Break_Manager_Permission_Set</members>
         <name>PermissionSet</name>

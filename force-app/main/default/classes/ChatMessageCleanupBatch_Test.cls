@@ -2,12 +2,13 @@
  * ===========================================================================================
  * @description       : Test class for ChatMessageCleanupBatch
  * @author            : CNXK
- * @last modified on  : 2025-03-06
+ * @last modified on  : 2025-03-13
  * @last modified by  : CNXK
  * ===========================================================================================
  * Modification Log
  * Ver   Date         Author              Description
  * 1.0   2025-03-06   CNXK                Initial version - Test coverage for batch cleanup
+ * 2.0   2025-03-13   CNXK                Updated to test archive chunk deletion
  */
 @isTest
 private class ChatMessageCleanupBatch_Test {
@@ -131,5 +132,126 @@ private class ChatMessageCleanupBatch_Test {
             FROM Inner_Chat_Message__c
         ];
         System.assertEquals(0, remainingMessages.size(), 'No messages should remain');
+    }
+    
+    @isTest
+    static void testArchiveChunkDeletion() {
+        // Get session
+        Inner_Chat_Session__c session = [SELECT Id FROM Inner_Chat_Session__c LIMIT 1];
+        
+        // Create old archive chunks (older than 1 year)
+        List<Inner_Chat_Message_Archive__c> oldArchives = new List<Inner_Chat_Message_Archive__c>();
+        DateTime oldDate = DateTime.now().addDays(-400); // 400 days ago
+        
+        for (Integer i = 0; i < 3; i++) {
+            oldArchives.add(new Inner_Chat_Message_Archive__c(
+                Inner_Chat_Session__c = session.Id,
+                Chunk_Index__c = i,
+                Messages_JSON__c = '[{"id":"test","content":"test","createdDate":"' + oldDate.formatGmt('yyyy-MM-dd\'T\'HH:mm:ss\'Z\'') + '"}]',
+                Message_Count__c = 10,
+                First_Message_Date__c = oldDate,
+                Last_Message_Date__c = oldDate.addDays(1)
+            ));
+        }
+        insert oldArchives;
+        
+        // Create recent archive chunks (less than 1 year)
+        List<Inner_Chat_Message_Archive__c> recentArchives = new List<Inner_Chat_Message_Archive__c>();
+        DateTime recentDate = DateTime.now().addDays(-100); // 100 days ago
+        
+        for (Integer i = 3; i < 5; i++) {
+            recentArchives.add(new Inner_Chat_Message_Archive__c(
+                Inner_Chat_Session__c = session.Id,
+                Chunk_Index__c = i,
+                Messages_JSON__c = '[{"id":"test","content":"test","createdDate":"' + recentDate.formatGmt('yyyy-MM-dd\'T\'HH:mm:ss\'Z\'') + '"}]',
+                Message_Count__c = 10,
+                First_Message_Date__c = recentDate,
+                Last_Message_Date__c = recentDate.addDays(1)
+            ));
+        }
+        insert recentArchives;
+        
+        // Update session metadata
+        session.Archived_Message_Count__c = 50; // 5 chunks * 10 messages
+        update session;
+        
+        // Verify initial archive count
+        List<Inner_Chat_Message_Archive__c> allArchives = [
+            SELECT Id, Last_Message_Date__c
+            FROM Inner_Chat_Message_Archive__c
+            WHERE Inner_Chat_Session__c = :session.Id
+        ];
+        System.assertEquals(5, allArchives.size(), 'Should have 5 archive chunks initially');
+        
+        // Run batch job
+        Test.startTest();
+        ChatMessageCleanupBatch batch = new ChatMessageCleanupBatch();
+        Database.executeBatch(batch, 200);
+        Test.stopTest();
+        
+        // Verify old archive chunks are deleted
+        List<Inner_Chat_Message_Archive__c> remainingArchives = [
+            SELECT Id, Last_Message_Date__c
+            FROM Inner_Chat_Message_Archive__c
+            WHERE Inner_Chat_Session__c = :session.Id
+        ];
+        System.assertEquals(2, remainingArchives.size(), 'Should have 2 recent archive chunks remaining');
+        
+        // Verify session metadata is updated
+        Inner_Chat_Session__c updatedSession = [
+            SELECT Archived_Message_Count__c
+            FROM Inner_Chat_Session__c
+            WHERE Id = :session.Id
+        ];
+        System.assertEquals(20, updatedSession.Archived_Message_Count__c, 'Archived count should be updated to 20 (2 chunks * 10 messages)');
+    }
+    
+    @isTest
+    static void testCleanupWithBothActiveAndArchived() {
+        // Get session
+        Inner_Chat_Session__c session = [SELECT Id FROM Inner_Chat_Session__c LIMIT 1];
+        
+        // Create old archive chunks
+        DateTime oldDate = DateTime.now().addDays(-400);
+        Inner_Chat_Message_Archive__c oldArchive = new Inner_Chat_Message_Archive__c(
+            Inner_Chat_Session__c = session.Id,
+            Chunk_Index__c = 0,
+            Messages_JSON__c = '[{"id":"test","content":"test","createdDate":"' + oldDate.formatGmt('yyyy-MM-dd\'T\'HH:mm:ss\'Z\'') + '"}]',
+            Message_Count__c = 5,
+            First_Message_Date__c = oldDate,
+            Last_Message_Date__c = oldDate.addDays(1)
+        );
+        insert oldArchive;
+        
+        session.Archived_Message_Count__c = 5;
+        update session;
+        
+        // Verify initial state
+        List<Inner_Chat_Message__c> oldMessages = [
+            SELECT Id FROM Inner_Chat_Message__c WHERE CreatedDate < :DateTime.now().addDays(-365)
+        ];
+        System.assert(oldMessages.size() > 0, 'Should have old active messages');
+        
+        List<Inner_Chat_Message_Archive__c> oldArchives = [
+            SELECT Id FROM Inner_Chat_Message_Archive__c WHERE Last_Message_Date__c < :DateTime.now().addDays(-365)
+        ];
+        System.assertEquals(1, oldArchives.size(), 'Should have old archive chunk');
+        
+        // Run batch job
+        Test.startTest();
+        ChatMessageCleanupBatch batch = new ChatMessageCleanupBatch();
+        Database.executeBatch(batch, 200);
+        Test.stopTest();
+        
+        // Verify both are deleted
+        List<Inner_Chat_Message__c> remainingMessages = [
+            SELECT Id FROM Inner_Chat_Message__c WHERE CreatedDate < :DateTime.now().addDays(-365)
+        ];
+        System.assertEquals(0, remainingMessages.size(), 'Old active messages should be deleted');
+        
+        List<Inner_Chat_Message_Archive__c> remainingArchives = [
+            SELECT Id FROM Inner_Chat_Message_Archive__c WHERE Last_Message_Date__c < :DateTime.now().addDays(-365)
+        ];
+        System.assertEquals(0, remainingArchives.size(), 'Old archive chunks should be deleted');
     }
 }
